@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { InterviewCard } from "@/components/interview-card";
 import { useInterviews } from "@/hooks/use-interviews";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Search, 
   Filter, 
@@ -33,10 +34,35 @@ export default function Interviews() {
     error 
   } = useInterviews();
 
+  // Fetch candidates and jobs for enhanced search
+  const { data: candidates } = useQuery<any[]>({
+    queryKey: ["/api/candidates"],
+  });
+
+  const { data: jobs } = useQuery<any[]>({
+    queryKey: ["/api/jobs"],
+  });
+
   const filteredInterviews = interviews?.filter(interview => {
-    const matchesSearch = searchQuery === "" || 
-                         interview.candidateId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         interview.jobId.toLowerCase().includes(searchQuery.toLowerCase());
+    let matchesSearch = searchQuery === "";
+    
+    if (searchQuery && !matchesSearch) {
+      const query = searchQuery.toLowerCase();
+      
+      // Search by candidate name
+      const candidate = candidates?.find(c => c.id === interview.candidateId);
+      const candidateMatch = candidate?.name?.toLowerCase().includes(query);
+      
+      // Search by job title
+      const job = jobs?.find(j => j.id === interview.jobId);
+      const jobMatch = job?.title?.toLowerCase().includes(query);
+      
+      // Also search original fields for backwards compatibility
+      const idMatch = interview.candidateId.toLowerCase().includes(query) ||
+                     interview.jobId.toLowerCase().includes(query);
+      
+      matchesSearch = candidateMatch || jobMatch || idMatch;
+    }
     
     const matchesStatus = statusFilter === "all" || interview.status === statusFilter;
     const matchesType = typeFilter === "all" || interview.type === typeFilter;
