@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { JobCard } from "@/components/job-card";
 import { useJobs } from "@/hooks/use-jobs";
+import { useLanguage } from "@/contexts/language-context";
 import { 
   Search, 
   Filter, 
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/select";
 
 export default function Jobs() {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
@@ -59,9 +61,9 @@ export default function Jobs() {
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-destructive">Failed to load jobs</p>
+            <p className="text-destructive">{t('jobs.failedToLoad')}</p>
             <Button onClick={() => window.location.reload()} className="mt-2">
-              Retry
+              {t('jobs.retry')}
             </Button>
           </div>
         </div>
@@ -78,16 +80,16 @@ export default function Jobs() {
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">Job Postings</h1>
+              <h1 className="text-2xl font-semibold text-foreground">{t('jobs.pageTitle')}</h1>
               <p className="text-sm text-muted-foreground">
-                Manage your open positions and track applications
+                {t('jobs.pageSubtitle')}
               </p>
             </div>
             
             <div className="flex items-center space-x-3">
               <Button data-testid="button-create-job">
                 <Plus className="w-4 h-4 mr-2" />
-                Create Job
+                {t('jobs.createJob')}
               </Button>
             </div>
           </div>
@@ -100,7 +102,7 @@ export default function Jobs() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="Search jobs..."
+                  placeholder={t('jobs.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 w-64"
@@ -110,22 +112,22 @@ export default function Jobs() {
               
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40" data-testid="select-status-filter">
-                  <SelectValue placeholder="All Statuses" />
+                  <SelectValue placeholder={t('jobs.allStatuses')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
+                  <SelectItem value="all">{t('jobs.allStatuses')}</SelectItem>
+                  <SelectItem value="active">{t('jobs.active')}</SelectItem>
+                  <SelectItem value="paused">{t('jobs.paused')}</SelectItem>
+                  <SelectItem value="closed">{t('jobs.closed')}</SelectItem>
                 </SelectContent>
               </Select>
 
               <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
                 <SelectTrigger className="w-40" data-testid="select-department-filter">
-                  <SelectValue placeholder="All Departments" />
+                  <SelectValue placeholder={t('jobs.allDepartments')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Departments</SelectItem>
+                  <SelectItem value="all">{t('jobs.allDepartments')}</SelectItem>
                   {departments.map(dept => (
                     <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                   ))}
@@ -134,12 +136,12 @@ export default function Jobs() {
 
               <Button variant="outline" size="sm" data-testid="button-advanced-filters">
                 <Filter className="w-4 h-4 mr-2" />
-                More Filters
+                {t('jobs.moreFilters')}
               </Button>
             </div>
 
             <div className="text-sm text-muted-foreground" data-testid="text-job-count">
-              {filteredJobs.length} of {jobStats.total} jobs
+              {t('jobs.jobCount', { filtered: filteredJobs.length.toString(), total: jobStats.total.toString() })}
             </div>
           </div>
 
@@ -147,13 +149,13 @@ export default function Jobs() {
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
               <Badge variant="secondary" data-testid="badge-active">
-                Active: {jobStats.active}
+                {t('jobs.active')}: {jobStats.active}
               </Badge>
               <Badge variant="secondary" data-testid="badge-paused">
-                Paused: {jobStats.paused}
+                {t('jobs.paused')}: {jobStats.paused}
               </Badge>
               <Badge variant="secondary" data-testid="badge-closed">
-                Closed: {jobStats.closed}
+                {t('jobs.closed')}: {jobStats.closed}
               </Badge>
             </div>
           </div>
@@ -180,18 +182,18 @@ export default function Jobs() {
               <CardContent className="flex flex-col items-center justify-center h-full text-center">
                 <Briefcase className="w-12 h-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium text-foreground mb-2">
-                  {searchQuery || statusFilter !== "all" || departmentFilter !== "all" ? "No jobs found" : "No jobs yet"}
+                  {searchQuery || statusFilter !== "all" || departmentFilter !== "all" ? t('jobs.noJobsFound') : t('jobs.noJobsYet')}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   {searchQuery || statusFilter !== "all" || departmentFilter !== "all"
-                    ? "Try adjusting your search or filters" 
-                    : "Get started by creating your first job posting"
+                    ? t('jobs.adjustFilters') 
+                    : t('jobs.getStartedHint')
                   }
                 </p>
                 {!searchQuery && statusFilter === "all" && departmentFilter === "all" && (
                   <Button data-testid="button-create-first-job">
                     <Plus className="w-4 h-4 mr-2" />
-                    Create First Job
+                    {t('jobs.createFirstJob')}
                   </Button>
                 )}
               </CardContent>

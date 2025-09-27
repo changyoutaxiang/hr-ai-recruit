@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/ui/sidebar";
 import { AiChat } from "@/components/ai-chat";
+import { useLanguage } from "@/contexts/language-context";
 import { 
   Bot, 
   MessageCircle, 
@@ -13,46 +14,51 @@ import {
   BarChart3
 } from "lucide-react";
 
-const quickActions = [
-  {
-    title: "Analyze Resume",
-    description: "Get AI insights on candidate resumes",
-    icon: FileText,
-    action: "analyze-resume",
-  },
-  {
-    title: "Match Candidates",
-    description: "Find best candidates for a job",
-    icon: Users,
-    action: "match-candidates",
-  },
-  {
-    title: "Generate Questions",
-    description: "Create interview questions",
-    icon: MessageCircle,
-    action: "generate-questions",
-  },
-  {
-    title: "Job Description",
-    description: "Optimize job postings",
-    icon: Briefcase,
-    action: "optimize-job",
-  },
-  {
-    title: "Recruitment Insights",
-    description: "Get data-driven recommendations",
-    icon: BarChart3,
-    action: "insights",
-  },
-  {
-    title: "Best Practices",
-    description: "Learn recruitment strategies",
-    icon: Lightbulb,
-    action: "best-practices",
-  },
-];
+const useQuickActions = () => {
+  const { t } = useLanguage();
+  return [
+    {
+      title: t('assistant.analyzeResume'),
+      description: t('assistant.analyzeResumeDesc'),
+      icon: FileText,
+      action: "analyze-resume",
+    },
+    {
+      title: t('assistant.matchCandidates'),
+      description: t('assistant.matchCandidatesDesc'),
+      icon: Users,
+      action: "match-candidates",
+    },
+    {
+      title: t('assistant.generateQuestions'),
+      description: t('assistant.generateQuestionsDesc'),
+      icon: MessageCircle,
+      action: "generate-questions",
+    },
+    {
+      title: t('assistant.jobDescription'),
+      description: t('assistant.jobDescriptionDesc'),
+      icon: Briefcase,
+      action: "optimize-job",
+    },
+    {
+      title: t('assistant.recruitmentInsights'),
+      description: t('assistant.recruitmentInsightsDesc'),
+      icon: BarChart3,
+      action: "insights",
+    },
+    {
+      title: t('assistant.bestPractices'),
+      description: t('assistant.bestPracticesDesc'),
+      icon: Lightbulb,
+      action: "best-practices",
+    },
+  ];
+};
 
 export default function AIAssistant() {
+  const { t } = useLanguage();
+  const quickActions = useQuickActions();
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [chatStarted, setChatStarted] = useState(false);
 
@@ -64,19 +70,19 @@ export default function AIAssistant() {
   const getActionPrompt = (action: string) => {
     switch (action) {
       case "analyze-resume":
-        return "I'd like to analyze a candidate's resume. Can you help me understand what to look for and how to extract key information?";
+        return t('assistant.initialPromptAnalyze');
       case "match-candidates":
-        return "I need help matching candidates to job positions. What factors should I consider for the best matches?";
+        return t('assistant.initialPromptMatch');
       case "generate-questions":
-        return "Can you help me generate relevant interview questions for a specific role?";
+        return t('assistant.initialPromptQuestions');
       case "optimize-job":
-        return "I want to optimize a job description to attract better candidates. What elements should I focus on?";
+        return t('assistant.initialPromptOptimize');
       case "insights":
-        return "Can you provide insights on our recruitment data and suggest improvements to our hiring process?";
+        return t('assistant.initialPromptInsights');
       case "best-practices":
-        return "What are the current best practices in recruitment and talent acquisition?";
+        return t('assistant.initialPromptPractices');
       default:
-        return "";
+        return t('assistant.welcomeMessage');
     }
   };
 
@@ -92,9 +98,9 @@ export default function AIAssistant() {
               <Bot className="text-primary-foreground w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">AI Assistant</h1>
+              <h1 className="text-2xl font-semibold text-foreground">{t('assistant.pageTitle')}</h1>
               <p className="text-sm text-muted-foreground">
-                Your intelligent recruitment companion
+                {t('assistant.pageSubtitle')}
               </p>
             </div>
           </div>
@@ -111,11 +117,10 @@ export default function AIAssistant() {
                     <Bot className="w-8 h-8 text-primary" />
                   </div>
                   <h2 className="text-2xl font-bold text-foreground mb-2">
-                    Welcome to your AI Recruitment Assistant
+                    {t('assistant.pageTitle')}
                   </h2>
                   <p className="text-muted-foreground max-w-2xl mx-auto">
-                    I'm here to help you with candidate analysis, job matching, interview preparation, 
-                    and recruitment insights. Choose a quick action below or start a conversation.
+                    {t('assistant.welcomeMessage')}
                   </p>
                 </CardContent>
               </Card>
@@ -153,28 +158,28 @@ export default function AIAssistant() {
                 <CardHeader>
                   <CardTitle className="flex items-center space-x-2">
                     <MessageCircle className="w-5 h-5" />
-                    <span>Recent Conversations</span>
+                    <span>{t('assistant.history')}</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="p-3 bg-accent rounded-lg cursor-pointer hover:bg-accent/80 transition-colors">
                       <p className="text-sm font-medium text-accent-foreground">
-                        Interview questions for Senior Developer role
+                        {t('assistant.generateQuestions')} - Senior Developer
                       </p>
-                      <p className="text-xs text-muted-foreground">2 hours ago</p>
+                      <p className="text-xs text-muted-foreground">2 {t('dashboard.last30Days')}</p>
                     </div>
                     <div className="p-3 bg-accent rounded-lg cursor-pointer hover:bg-accent/80 transition-colors">
                       <p className="text-sm font-medium text-accent-foreground">
-                        Candidate matching analysis for Product Manager
+                        {t('assistant.matchCandidates')} - Product Manager
                       </p>
-                      <p className="text-xs text-muted-foreground">Yesterday</p>
+                      <p className="text-xs text-muted-foreground">{t('dashboard.last30Days')}</p>
                     </div>
                     <div className="p-3 bg-accent rounded-lg cursor-pointer hover:bg-accent/80 transition-colors">
                       <p className="text-sm font-medium text-accent-foreground">
-                        Resume analysis best practices
+                        {t('assistant.analyzeResume')} - {t('assistant.bestPractices')}
                       </p>
-                      <p className="text-xs text-muted-foreground">3 days ago</p>
+                      <p className="text-xs text-muted-foreground">3 {t('dashboard.last30Days')}</p>
                     </div>
                   </div>
                   <Button 
@@ -182,7 +187,7 @@ export default function AIAssistant() {
                     className="w-full mt-4"
                     data-testid="button-view-all-conversations"
                   >
-                    View all conversations
+                    {t('assistant.history')}
                   </Button>
                 </CardContent>
               </Card>
@@ -195,7 +200,7 @@ export default function AIAssistant() {
                   data-testid="button-start-new-chat"
                 >
                   <MessageCircle className="w-4 h-4 mr-2" />
-                  Start New Conversation
+                  {t('assistant.send')}
                 </Button>
               </div>
             </div>

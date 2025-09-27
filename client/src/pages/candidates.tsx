@@ -11,6 +11,7 @@ import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/language-context";
 import { 
   Search, 
   Filter, 
@@ -38,6 +39,7 @@ import {
 import type { ResumeAnalysisResult } from "@/types";
 
 export default function Candidates() {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -61,14 +63,14 @@ export default function Candidates() {
       setIsCreateDialogOpen(false);
       setSelectedCandidateForResume(newCandidate.id);
       toast({
-        title: "Candidate created",
-        description: "New candidate has been added successfully.",
+        title: t('candidates.candidateCreated'),
+        description: t('candidates.candidateCreatedDesc'),
       });
     },
     onError: () => {
       toast({
-        title: "Error",
-        description: "Failed to create candidate.",
+        title: t('error.generic'),
+        description: t('candidates.createCandidateError'),
         variant: "destructive",
       });
     },
@@ -104,8 +106,8 @@ export default function Candidates() {
     queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
     setSelectedCandidateForResume(null);
     toast({
-      title: "Resume analysis complete",
-      description: "Candidate profile has been updated with AI insights.",
+      title: t('candidates.resumeAnalysisComplete'),
+      description: t('candidates.resumeAnalysisCompleteDesc'),
     });
   };
 
@@ -115,9 +117,9 @@ export default function Candidates() {
         <Sidebar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-destructive">Failed to load candidates</p>
+            <p className="text-destructive">{t('candidates.failedToLoad')}</p>
             <Button onClick={() => window.location.reload()} className="mt-2">
-              Retry
+              {t('jobs.retry')}
             </Button>
           </div>
         </div>
@@ -134,9 +136,9 @@ export default function Candidates() {
           <header className="bg-card border-b border-border px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-semibold text-foreground">Resume Upload</h1>
+                <h1 className="text-2xl font-semibold text-foreground">{t('candidates.resumeUpload')}</h1>
                 <p className="text-sm text-muted-foreground">
-                  Upload and analyze candidate resume
+                  {t('candidates.resumeUploadDesc')}
                 </p>
               </div>
               <Button
@@ -145,7 +147,7 @@ export default function Candidates() {
                 data-testid="button-back-to-candidates"
               >
                 <X className="w-4 h-4 mr-2" />
-                Back to Candidates
+                {t('candidates.backToCandidates')}
               </Button>
             </div>
           </header>
@@ -173,31 +175,31 @@ export default function Candidates() {
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">Candidates</h1>
+              <h1 className="text-2xl font-semibold text-foreground">{t('candidates.pageTitle')}</h1>
               <p className="text-sm text-muted-foreground">
-                Manage and track your candidate pipeline
+                {t('candidates.pageSubtitle')}
               </p>
             </div>
             
             <div className="flex items-center space-x-3">
               <Button variant="outline" data-testid="button-import-candidates">
                 <Upload className="w-4 h-4 mr-2" />
-                Import
+                {t('candidates.importCandidates')}
               </Button>
               <Button variant="outline" data-testid="button-export-candidates">
                 <Download className="w-4 h-4 mr-2" />
-                Export
+                {t('candidates.exportCandidates')}
               </Button>
               <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-add-candidate">
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Candidate
+                    {t('candidates.addCandidate')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Add New Candidate</DialogTitle>
+                    <DialogTitle>{t('candidates.addNewCandidate')}</DialogTitle>
                   </DialogHeader>
                   <CandidateForm 
                     onSubmit={handleCreateCandidate}
@@ -216,7 +218,7 @@ export default function Candidates() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="Search candidates..."
+                  placeholder={t('candidates.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 w-64"
@@ -226,40 +228,40 @@ export default function Candidates() {
               
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-40" data-testid="select-status-filter">
-                  <SelectValue placeholder="All Statuses" />
+                  <SelectValue placeholder={t('jobs.allStatuses')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="applied">Applied</SelectItem>
-                  <SelectItem value="screening">Screening</SelectItem>
-                  <SelectItem value="interview">Interview</SelectItem>
+                  <SelectItem value="all">{t('jobs.allStatuses')}</SelectItem>
+                  <SelectItem value="applied">{t('candidates.applied')}</SelectItem>
+                  <SelectItem value="screening">{t('candidates.screening')}</SelectItem>
+                  <SelectItem value="interview">{t('candidates.interview')}</SelectItem>
                   <SelectItem value="offer">Offer</SelectItem>
-                  <SelectItem value="hired">Hired</SelectItem>
+                  <SelectItem value="hired">{t('candidates.hired')}</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
 
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
                 <SelectTrigger className="w-40" data-testid="select-source-filter">
-                  <SelectValue placeholder="All Sources" />
+                  <SelectValue placeholder={t('candidates.allSources')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Sources</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
-                  <SelectItem value="linkedin">LinkedIn</SelectItem>
-                  <SelectItem value="job_board">Job Board</SelectItem>
-                  <SelectItem value="referral">Referral</SelectItem>
+                  <SelectItem value="all">{t('candidates.allSources')}</SelectItem>
+                  <SelectItem value="manual">{t('candidates.manual')}</SelectItem>
+                  <SelectItem value="linkedin">{t('candidates.linkedin')}</SelectItem>
+                  <SelectItem value="job_board">{t('candidates.jobBoard')}</SelectItem>
+                  <SelectItem value="referral">{t('candidates.referral')}</SelectItem>
                 </SelectContent>
               </Select>
 
               <Button variant="outline" size="sm" data-testid="button-advanced-filters">
                 <Filter className="w-4 h-4 mr-2" />
-                More Filters
+                {t('jobs.moreFilters')}
               </Button>
             </div>
 
             <div className="text-sm text-muted-foreground" data-testid="text-candidate-count">
-              {filteredCandidates.length} of {candidateStats.total} candidates
+              {t('candidates.candidateCount', { filtered: filteredCandidates.length.toString(), total: candidateStats.total.toString() })}
             </div>
           </div>
 
@@ -267,16 +269,16 @@ export default function Candidates() {
           <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
               <Badge variant="secondary" data-testid="badge-applied">
-                Applied: {candidateStats.applied}
+                {t('candidates.applied')}: {candidateStats.applied}
               </Badge>
               <Badge variant="secondary" data-testid="badge-screening">
-                Screening: {candidateStats.screening}
+                {t('candidates.screening')}: {candidateStats.screening}
               </Badge>
               <Badge variant="secondary" data-testid="badge-interview">
-                Interview: {candidateStats.interview}
+                {t('candidates.interview')}: {candidateStats.interview}
               </Badge>
               <Badge variant="secondary" data-testid="badge-hired">
-                Hired: {candidateStats.hired}
+                {t('candidates.hired')}: {candidateStats.hired}
               </Badge>
             </div>
           </div>
@@ -304,18 +306,18 @@ export default function Candidates() {
               <CardContent className="flex flex-col items-center justify-center h-full text-center">
                 <Users className="w-12 h-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium text-foreground mb-2">
-                  {searchQuery || statusFilter !== "all" || sourceFilter !== "all" ? "No candidates found" : "No candidates yet"}
+                  {searchQuery || statusFilter !== "all" || sourceFilter !== "all" ? t('candidates.noCandidatesFound') : t('candidates.noCandidatesYet')}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   {searchQuery || statusFilter !== "all" || sourceFilter !== "all"
-                    ? "Try adjusting your search or filters" 
-                    : "Get started by adding your first candidate"
+                    ? t('jobs.adjustFilters') 
+                    : t('candidates.getStartedCandidate')
                   }
                 </p>
                 {!searchQuery && statusFilter === "all" && sourceFilter === "all" && (
                   <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="button-add-first-candidate">
                     <Plus className="w-4 h-4 mr-2" />
-                    Add First Candidate
+                    {t('candidates.addFirstCandidate')}
                   </Button>
                 )}
               </CardContent>
@@ -333,6 +335,7 @@ interface CandidateFormProps {
 }
 
 function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -351,7 +354,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm font-medium">Name *</label>
+          <label className="text-sm font-medium">{t('candidates.formName')}</label>
           <Input
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -360,7 +363,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
           />
         </div>
         <div>
-          <label className="text-sm font-medium">Email *</label>
+          <label className="text-sm font-medium">{t('candidates.formEmail')}</label>
           <Input
             type="email"
             value={formData.email}
@@ -373,7 +376,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm font-medium">Phone</label>
+          <label className="text-sm font-medium">{t('candidates.formPhone')}</label>
           <Input
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -381,7 +384,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
           />
         </div>
         <div>
-          <label className="text-sm font-medium">Position</label>
+          <label className="text-sm font-medium">{t('candidates.formPosition')}</label>
           <Input
             value={formData.position}
             onChange={(e) => setFormData({ ...formData, position: e.target.value })}
@@ -392,7 +395,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm font-medium">Location</label>
+          <label className="text-sm font-medium">{t('candidates.formLocation')}</label>
           <Input
             value={formData.location}
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -400,16 +403,16 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
           />
         </div>
         <div>
-          <label className="text-sm font-medium">Source</label>
+          <label className="text-sm font-medium">{t('candidates.formSource')}</label>
           <Select value={formData.source} onValueChange={(value) => setFormData({ ...formData, source: value })}>
             <SelectTrigger data-testid="select-candidate-source">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="manual">Manual</SelectItem>
-              <SelectItem value="linkedin">LinkedIn</SelectItem>
-              <SelectItem value="job_board">Job Board</SelectItem>
-              <SelectItem value="referral">Referral</SelectItem>
+              <SelectItem value="manual">{t('candidates.manual')}</SelectItem>
+              <SelectItem value="linkedin">{t('candidates.linkedin')}</SelectItem>
+              <SelectItem value="job_board">{t('candidates.jobBoard')}</SelectItem>
+              <SelectItem value="referral">{t('candidates.referral')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -417,7 +420,7 @@ function CandidateForm({ onSubmit, isLoading }: CandidateFormProps) {
 
       <div className="flex justify-end space-x-2">
         <Button type="submit" disabled={isLoading} data-testid="button-create-candidate">
-          {isLoading ? "Creating..." : "Create Candidate"}
+          {isLoading ? t('candidates.creating') : t('candidates.createCandidate')}
         </Button>
       </div>
     </form>

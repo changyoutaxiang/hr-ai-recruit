@@ -1,7 +1,9 @@
 import { Sidebar } from "@/components/ui/sidebar";
 import { PromptTemplateManager } from "@/components/prompt-template-manager";
+import { useLanguage } from "@/contexts/language-context";
 
 export default function Templates() {
+  const { t } = useLanguage();
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
@@ -10,9 +12,9 @@ export default function Templates() {
         {/* Header */}
         <header className="bg-card border-b border-border px-6 py-4">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Prompt Templates</h1>
+            <h1 className="text-2xl font-semibold text-foreground">{t('templates.pageTitle')}</h1>
             <p className="text-sm text-muted-foreground">
-              Manage AI prompt templates for consistent recruitment workflows
+              {t('templates.pageSubtitle')}
             </p>
           </div>
         </header>
