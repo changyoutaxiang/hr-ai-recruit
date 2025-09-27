@@ -122,6 +122,52 @@ export const candidateStatusHistory = pgTable("candidate_status_history", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Real-time collaboration tables
+export const activityLog = pgTable("activity_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  action: text("action").notNull(), // candidate_updated, interview_scheduled, job_created, etc.
+  entityType: text("entity_type").notNull(), // candidate, job, interview
+  entityId: varchar("entity_id").notNull(),
+  entityName: text("entity_name").notNull(), // for display
+  details: jsonb("details"), // additional context
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  type: text("type").notNull(), // candidate_update, interview_reminder, team_activity
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  entityType: text("entity_type"), // candidate, job, interview
+  entityId: varchar("entity_id"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userSessions = pgTable("user_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  isOnline: boolean("is_online").notNull().default(true),
+  currentPage: text("current_page"),
+  lastActivity: timestamp("last_activity").defaultNow(),
+  socketId: text("socket_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const comments = pgTable("comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(), // candidate, job, interview
+  entityId: varchar("entity_id").notNull(),
+  content: text("content").notNull(),
+  authorId: varchar("author_id").references(() => users.id).notNull(),
+  isInternal: boolean("is_internal").notNull().default(true), // internal team notes vs external
+  mentions: jsonb("mentions"), // array of user IDs mentioned
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -168,6 +214,27 @@ export const insertCandidateStatusHistorySchema = createInsertSchema(candidateSt
   createdAt: true,
 });
 
+export const insertActivityLogSchema = createInsertSchema(activityLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCommentSchema = createInsertSchema(comments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -192,3 +259,15 @@ export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
 
 export type CandidateStatusHistory = typeof candidateStatusHistory.$inferSelect;
 export type InsertCandidateStatusHistory = z.infer<typeof insertCandidateStatusHistorySchema>;
+
+export type ActivityLog = typeof activityLog.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export type UserSession = typeof userSessions.$inferSelect;
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+
+export type Comment = typeof comments.$inferSelect;
+export type InsertComment = z.infer<typeof insertCommentSchema>;
