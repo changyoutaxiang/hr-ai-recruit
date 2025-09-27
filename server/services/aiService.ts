@@ -1,8 +1,13 @@
 import OpenAI from "openai";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Using Openrouter with Google Gemini 2.5 Flash Preview model
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+  defaultHeaders: {
+    "HTTP-Referer": "https://ai-recruit.replit.app", // Optional, for rankings on openrouter.ai
+    "X-Title": "AI Recruit System", // Optional, shows in rankings on openrouter.ai
+  },
 });
 
 export interface ResumeAnalysis {
@@ -25,7 +30,7 @@ export class AIService {
   async analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "google/gemini-2.5-flash-preview-09-2025",
         messages: [
           {
             role: "system",
@@ -72,7 +77,7 @@ export class AIService {
   }): Promise<MatchResult> {
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "google/gemini-2.5-flash-preview-09-2025",
         messages: [
           {
             role: "system",
@@ -119,7 +124,7 @@ export class AIService {
   async generateInterviewQuestions(jobTitle: string, requirements: string[]): Promise<string[]> {
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "google/gemini-2.5-flash-preview-09-2025",
         messages: [
           {
             role: "system",
@@ -174,7 +179,7 @@ export class AIService {
       messages.push({ role: "user", content: message });
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "google/gemini-2.5-flash-preview-09-2025",
         messages,
       });
 
