@@ -2,6 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Sidebar } from "@/components/ui/sidebar";
+import { TeamActivity } from "@/components/team-activity";
+import { NotificationPanel } from "@/components/notification-panel";
+import { OnlineUsers } from "@/components/online-users";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { 
@@ -88,12 +91,7 @@ export default function Dashboard() {
                 Add Candidate
               </Button>
               
-              <Button variant="ghost" size="sm" className="relative" data-testid="button-notifications">
-                <Bell className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full text-xs flex items-center justify-center text-white">
-                  3
-                </span>
-              </Button>
+              <NotificationPanel />
             </div>
           </div>
         </header>
@@ -300,55 +298,11 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* Recent Activity */}
-              <Card data-testid="card-recent-activity">
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-start space-x-3">
-                      <div className="w-8 h-8 bg-chart-2 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Plus className="text-white w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground">
-                          <span className="font-medium">John Smith</span> applied for Senior Developer
-                        </p>
-                        <p className="text-xs text-muted-foreground">2 hours ago</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start space-x-3">
-                      <div className="w-8 h-8 bg-chart-3 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Calendar className="text-white w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground">
-                          Interview scheduled with <span className="font-medium">Sarah Wilson</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">4 hours ago</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start space-x-3">
-                      <div className="w-8 h-8 bg-chart-4 rounded-full flex items-center justify-center flex-shrink-0">
-                        <Bot className="text-white w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground">
-                          AI analyzed resume for <span className="font-medium">Mike Chen</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">6 hours ago</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Button variant="ghost" className="w-full mt-4 text-center" data-testid="button-view-all-activity">
-                    View all activity
-                  </Button>
-                </CardContent>
-              </Card>
+              {/* Team Activity */}
+              <TeamActivity />
+              
+              {/* Online Users */}
+              <OnlineUsers />
             </div>
           </div>
 

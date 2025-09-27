@@ -1,7 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertJobSchema, insertCandidateSchema, insertInterviewSchema } from "@shared/schema";
+import { 
+  insertJobSchema, 
+  insertCandidateSchema, 
+  insertInterviewSchema,
+  insertActivityLogSchema,
+  insertNotificationSchema,
+  insertCommentSchema
+} from "@shared/schema";
 import { aiService } from "./services/aiService";
 import { resumeParserService } from "./services/resumeParser";
 import { matchingService } from "./services/matchingService";
@@ -583,6 +590,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching conversations:", error);
       res.status(500).json({ error: "Failed to fetch conversation history" });
+    }
+  });
+
+  // Collaboration routes
+  
+  // Activity logs
+  app.get("/api/activity", async (req, res) => {
+    try {
+      const { userId } = req.query;
+      let activities;
+      
+      if (userId && typeof userId === "string") {
+        activities = await storage.getActivityLogsByUser(userId);
+      } else {
+        activities = await storage.getActivityLogs();
+      }
+      
+      res.json(activities);
+    } catch (error) {
+      console.error("Error fetching activity logs:", error);
+      res.status(500).json({ error: "Failed to fetch activity logs" });
+    }
+  });
+
+  app.post("/api/activity", async (req, res) => {
+    try {
+      const validatedData = insertActivityLogSchema.parse(req.body);
+      const activity = await storage.createActivityLog(validatedData);
+      
+      // Broadcast to collaboration service
+      const collaborationService = app.get('collaborationService');
+      if (collaborationService) {
+        await collaborationService.broadcastToAll({
+          type: 'team_activity',
+          payload: activity
+        });
+      }
+      
+      res.status(201).json(activity);
+    } catch (error) {
+      console.error("Error creating activity log:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create activity log" });
+    }
+  });
+
+  // Notifications
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const { userId } = req.query;
+      if (!userId || typeof userId !== "string") {
+        return res.status(400).json({ error: "User ID is required" });
+      }
+      
+      const notifications = await storage.getNotifications(userId);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications", async (req, res) => {
+    try {
+      const validatedData = insertNotificationSchema.parse(req.body);
+      const notification = await storage.createNotification(validatedData);
+      
+      // Send real-time notification
+      const collaborationService = app.get('collaborationService');
+      if (collaborationService) {
+        await collaborationService.notifyUser(validatedData.userId, {
+          type: 'notification',
+          payload: notification
+        });
+      }
+      
+      res.status(201).json(notification);
+    } catch (error) {
+      console.error("Error creating notification:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create notification" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const success = await storage.markNotificationAsRead(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  });
+
+  // User sessions and online status
+  app.get("/api/team/online", async (req, res) => {
+    try {
+      const onlineUsers = await storage.getOnlineUsers();
+      res.json(onlineUsers);
+    } catch (error) {
+      console.error("Error fetching online users:", error);
+      res.status(500).json({ error: "Failed to fetch online users" });
+    }
+  });
+
+  // Comments
+  app.get("/api/comments/:entityType/:entityId", async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const comments = await storage.getComments(entityType, entityId);
+      res.json(comments);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+      res.status(500).json({ error: "Failed to fetch comments" });
+    }
+  });
+
+  app.post("/api/comments", async (req, res) => {
+    try {
+      const validatedData = insertCommentSchema.parse(req.body);
+      const comment = await storage.createComment(validatedData);
+      
+      // Broadcast new comment
+      const collaborationService = app.get('collaborationService');
+      if (collaborationService) {
+        await collaborationService.broadcastToAll({
+          type: 'new_comment',
+          payload: comment
+        });
+      }
+      
+      res.status(201).json(comment);
+    } catch (error) {
+      console.error("Error creating comment:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid request data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create comment" });
     }
   });
 

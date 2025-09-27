@@ -233,14 +233,14 @@ class CollaborationService {
   private async broadcastToTeam(excludeUserId: string, message: WSMessage, excludeSessionId?: string) {
     const messageStr = JSON.stringify(message);
     
-    for (const [sessionId, client] of this.clients.entries()) {
+    Array.from(this.clients.entries()).forEach(([sessionId, client]) => {
       if (client.userId && 
           client.userId !== excludeUserId && 
           sessionId !== excludeSessionId &&
           client.readyState === WebSocket.OPEN) {
         client.send(messageStr);
       }
-    }
+    });
   }
 
   private async getOnlineUsers(): Promise<any[]> {
@@ -333,11 +333,11 @@ class CollaborationService {
 
   public async broadcastToAll(message: WSMessage) {
     const messageStr = JSON.stringify(message);
-    for (const [sessionId, client] of this.clients.entries()) {
+    Array.from(this.clients.entries()).forEach(([sessionId, client]) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(messageStr);
       }
-    }
+    });
   }
 }
 

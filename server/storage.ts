@@ -628,7 +628,12 @@ export class MemStorage implements IStorage {
   async createActivityLog(activity: InsertActivityLog): Promise<ActivityLog> {
     const newActivity: ActivityLog = {
       id: randomUUID(),
-      ...activity,
+      userId: activity.userId,
+      action: activity.action,
+      entityType: activity.entityType,
+      entityId: activity.entityId,
+      entityName: activity.entityName,
+      details: activity.details || null,
       createdAt: new Date(),
     };
     this.activityLogs.set(newActivity.id, newActivity);
@@ -650,7 +655,13 @@ export class MemStorage implements IStorage {
   async createNotification(notification: InsertNotification): Promise<Notification> {
     const newNotification: Notification = {
       id: randomUUID(),
-      ...notification,
+      userId: notification.userId,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      entityType: notification.entityType || null,
+      entityId: notification.entityId || null,
+      isRead: notification.isRead || false,
       createdAt: new Date(),
     };
     this.notifications.set(newNotification.id, newNotification);
@@ -677,7 +688,11 @@ export class MemStorage implements IStorage {
   async createUserSession(session: InsertUserSession): Promise<UserSession> {
     const newSession: UserSession = {
       id: randomUUID(),
-      ...session,
+      userId: session.userId,
+      isOnline: session.isOnline !== undefined ? session.isOnline : true,
+      currentPage: session.currentPage || null,
+      lastActivity: session.lastActivity || new Date(),
+      socketId: session.socketId || null,
       createdAt: new Date(),
     };
     this.userSessions.set(newSession.id, newSession);
@@ -712,7 +727,12 @@ export class MemStorage implements IStorage {
   async createComment(comment: InsertComment): Promise<Comment> {
     const newComment: Comment = {
       id: randomUUID(),
-      ...comment,
+      entityType: comment.entityType,
+      entityId: comment.entityId,
+      content: comment.content,
+      authorId: comment.authorId,
+      isInternal: comment.isInternal !== undefined ? comment.isInternal : true,
+      mentions: comment.mentions || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
