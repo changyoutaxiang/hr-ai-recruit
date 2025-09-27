@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WebSocketProvider } from "@/contexts/websocket-context";
+import { LanguageProvider } from "@/contexts/language-context";
 import Dashboard from "@/pages/dashboard";
 import Candidates from "@/pages/candidates";
 import Jobs from "@/pages/jobs";
@@ -29,12 +30,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WebSocketProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </WebSocketProvider>
+      <LanguageProvider>
+        <WebSocketProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </WebSocketProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }
