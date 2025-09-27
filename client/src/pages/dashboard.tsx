@@ -76,7 +76,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-foreground">{t('nav.dashboard')}</h1>
-              <p className="text-sm text-muted-foreground">Welcome back, Sarah! Here's your recruitment overview.</p>
+              <p className="text-sm text-muted-foreground">{t('dashboard.welcomeMessage')}</p>
             </div>
             
             <div className="flex items-center space-x-4">
@@ -115,7 +115,7 @@ export default function Dashboard() {
                     </p>
                     <p className="text-sm text-chart-2 flex items-center">
                       <ArrowUp className="w-4 h-4 mr-1" />
-                      12% from last month
+                      12% {t('dashboard.fromLastMonth')}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -135,7 +135,7 @@ export default function Dashboard() {
                     </p>
                     <p className="text-sm text-chart-3 flex items-center">
                       <ArrowUp className="w-4 h-4 mr-1" />
-                      3 new this week
+                      3 {t('dashboard.newThisWeek')}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-chart-2/10 rounded-lg flex items-center justify-center">
@@ -149,13 +149,13 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Interview Rate</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t('dashboard.interviewRate')}</p>
                     <p className="text-3xl font-bold text-foreground" data-testid="text-interview-rate">
                       {metrics?.interviewRate || 0}%
                     </p>
                     <p className="text-sm text-chart-2 flex items-center">
                       <ArrowUp className="w-4 h-4 mr-1" />
-                      5% improvement
+                      5% {t('dashboard.improvement')}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-chart-3/10 rounded-lg flex items-center justify-center">
@@ -169,13 +169,13 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Hire Rate</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t('dashboard.hireRate')}</p>
                     <p className="text-3xl font-bold text-foreground" data-testid="text-hire-rate">
                       {metrics?.hireRate || 0}%
                     </p>
                     <p className="text-sm text-destructive flex items-center">
                       <ArrowDown className="w-4 h-4 mr-1" />
-                      2% from target
+                      2% {t('dashboard.fromTarget')}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-chart-4/10 rounded-lg flex items-center justify-center">
@@ -194,9 +194,9 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <CardTitle>{t('dashboard.recruitmentFunnel')}</CardTitle>
                   <select className="border border-border rounded-md px-3 py-1 text-sm bg-background">
-                    <option>Last 30 days</option>
-                    <option>Last 90 days</option>
-                    <option>This year</option>
+                    <option>{t('dashboard.last30Days')}</option>
+                    <option>{t('dashboard.last90Days')}</option>
+                    <option>{t('dashboard.thisYear')}</option>
                   </select>
                 </div>
               </CardHeader>
@@ -274,21 +274,21 @@ export default function Dashboard() {
                     <div className="p-3 bg-accent rounded-lg">
                       <p className="text-sm text-accent-foreground flex items-start">
                         <Lightbulb className="text-chart-3 w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        23 candidates match the Senior Developer position requirements
+                        23 {t('insights.candidateMatch')}
                       </p>
                     </div>
                     
                     <div className="p-3 bg-accent rounded-lg">
                       <p className="text-sm text-accent-foreground flex items-start">
                         <BarChart3 className="text-chart-2 w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        Interview completion rate increased by 15% this month
+                        {t('insights.interviewRate')}
                       </p>
                     </div>
                     
                     <div className="p-3 bg-accent rounded-lg">
                       <p className="text-sm text-accent-foreground flex items-start">
                         <AlertTriangle className="text-chart-5 w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        3 high-priority candidates haven't been contacted yet
+                        3 {t('insights.urgentCandidates')}
                       </p>
                     </div>
                   </div>

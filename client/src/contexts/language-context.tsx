@@ -81,6 +81,21 @@ const translations: Translations = {
   'dashboard.topCandidates': { en: 'Top Matching Candidates', zh: '最佳匹配候选人' },
   'dashboard.viewAllCandidates': { en: 'View all candidates', zh: '查看所有候选人' },
   'dashboard.openAiAssistant': { en: 'Open AI Assistant', zh: '打开 AI 助手' },
+  'dashboard.welcomeMessage': { en: 'Welcome back, Sarah! Here\'s your recruitment overview.', zh: '欢迎回来，Sarah！这是您的招聘概览。' },
+  'dashboard.interviewRate': { en: 'Interview Rate', zh: '面试率' },
+  'dashboard.hireRate': { en: 'Hire Rate', zh: '录用率' },
+  'dashboard.fromLastMonth': { en: 'from last month', zh: '与上月相比' },
+  'dashboard.newThisWeek': { en: 'new this week', zh: '本周新增' },
+  'dashboard.improvement': { en: 'improvement', zh: '提升' },
+  'dashboard.fromTarget': { en: 'from target', zh: '距离目标' },
+  'dashboard.last30Days': { en: 'Last 30 days', zh: '最近 30 天' },
+  'dashboard.last90Days': { en: 'Last 90 days', zh: '最近 90 天' },
+  'dashboard.thisYear': { en: 'This year', zh: '今年' },
+
+  // AI 洞察
+  'insights.candidateMatch': { en: 'candidates match the Senior Developer position requirements', zh: '位候选人符合高级开发工程师职位要求' },
+  'insights.interviewRate': { en: 'Interview completion rate increased by 15% this month', zh: '本月面试完成率提高了 15%' },
+  'insights.urgentCandidates': { en: 'high-priority candidates haven\'t been contacted yet', zh: '位高优先级候选人尚未联系' },
 
   // 招聘漏斗
   'funnel.applicationsReceived': { en: 'Applications Received', zh: '收到申请' },
