@@ -6,7 +6,11 @@ import {
   type AiConversation, type InsertAiConversation,
   type JobMatch, type InsertJobMatch,
   type PromptTemplate, type InsertPromptTemplate,
-  type CandidateStatusHistory, type InsertCandidateStatusHistory
+  type CandidateStatusHistory, type InsertCandidateStatusHistory,
+  type ActivityLog, type InsertActivityLog,
+  type Notification, type InsertNotification,
+  type UserSession, type InsertUserSession,
+  type Comment, type InsertComment
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -52,6 +56,29 @@ export interface IStorage {
   // Candidate Status History
   createCandidateStatusHistory(history: InsertCandidateStatusHistory): Promise<CandidateStatusHistory>;
   getCandidateStatusHistory(candidateId: string): Promise<CandidateStatusHistory[]>;
+
+  // Activity Log
+  createActivityLog(activity: InsertActivityLog): Promise<ActivityLog>;
+  getActivityLogs(): Promise<ActivityLog[]>;
+  getActivityLogsByUser(userId: string): Promise<ActivityLog[]>;
+
+  // Notifications
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  getNotifications(userId: string): Promise<Notification[]>;
+  markNotificationAsRead(id: string): Promise<boolean>;
+
+  // User Sessions
+  createUserSession(session: InsertUserSession): Promise<UserSession>;
+  updateUserSession(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | undefined>;
+  getOnlineUsers(): Promise<User[]>;
+  getUserSessions(userId: string): Promise<UserSession[]>;
+
+  // Comments
+  createComment(comment: InsertComment): Promise<Comment>;
+  getComments(entityType: string, entityId: string): Promise<Comment[]>;
+
+  // Additional user methods
+  getUsers(): Promise<User[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -62,6 +89,10 @@ export class MemStorage implements IStorage {
   private aiConversations: Map<string, AiConversation> = new Map();
   private jobMatches: Map<string, JobMatch> = new Map();
   private candidateStatusHistory: Map<string, CandidateStatusHistory> = new Map();
+  private activityLogs: Map<string, ActivityLog> = new Map();
+  private notifications: Map<string, Notification> = new Map();
+  private userSessions: Map<string, UserSession> = new Map();
+  private comments: Map<string, Comment> = new Map();
 
   constructor() {
     // Initialize with some sample data for development
@@ -591,6 +622,113 @@ export class MemStorage implements IStorage {
     return Array.from(this.candidateStatusHistory.values()).filter(
       history => history.candidateId === candidateId
     ).sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime());
+  }
+
+  // Activity Log methods
+  async createActivityLog(activity: InsertActivityLog): Promise<ActivityLog> {
+    const newActivity: ActivityLog = {
+      id: randomUUID(),
+      ...activity,
+      createdAt: new Date(),
+    };
+    this.activityLogs.set(newActivity.id, newActivity);
+    return newActivity;
+  }
+
+  async getActivityLogs(): Promise<ActivityLog[]> {
+    return Array.from(this.activityLogs.values())
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getActivityLogsByUser(userId: string): Promise<ActivityLog[]> {
+    return Array.from(this.activityLogs.values())
+      .filter(log => log.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  // Notification methods
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const newNotification: Notification = {
+      id: randomUUID(),
+      ...notification,
+      createdAt: new Date(),
+    };
+    this.notifications.set(newNotification.id, newNotification);
+    return newNotification;
+  }
+
+  async getNotifications(userId: string): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async markNotificationAsRead(id: string): Promise<boolean> {
+    const notification = this.notifications.get(id);
+    if (notification) {
+      notification.isRead = true;
+      this.notifications.set(id, notification);
+      return true;
+    }
+    return false;
+  }
+
+  // User Session methods
+  async createUserSession(session: InsertUserSession): Promise<UserSession> {
+    const newSession: UserSession = {
+      id: randomUUID(),
+      ...session,
+      createdAt: new Date(),
+    };
+    this.userSessions.set(newSession.id, newSession);
+    return newSession;
+  }
+
+  async updateUserSession(sessionId: string, updates: Partial<UserSession>): Promise<UserSession | undefined> {
+    const session = this.userSessions.get(sessionId);
+    if (session) {
+      const updatedSession = { ...session, ...updates };
+      this.userSessions.set(sessionId, updatedSession);
+      return updatedSession;
+    }
+    return undefined;
+  }
+
+  async getOnlineUsers(): Promise<User[]> {
+    const onlineSessions = Array.from(this.userSessions.values())
+      .filter(session => session.isOnline);
+    
+    const onlineUserIds = new Set(onlineSessions.map(session => session.userId));
+    return Array.from(this.users.values())
+      .filter(user => onlineUserIds.has(user.id));
+  }
+
+  async getUserSessions(userId: string): Promise<UserSession[]> {
+    return Array.from(this.userSessions.values())
+      .filter(session => session.userId === userId);
+  }
+
+  // Comment methods
+  async createComment(comment: InsertComment): Promise<Comment> {
+    const newComment: Comment = {
+      id: randomUUID(),
+      ...comment,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.comments.set(newComment.id, newComment);
+    return newComment;
+  }
+
+  async getComments(entityType: string, entityId: string): Promise<Comment[]> {
+    return Array.from(this.comments.values())
+      .filter(comment => comment.entityType === entityType && comment.entityId === entityId)
+      .sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
+  }
+
+  // Additional user methods
+  async getUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
   }
 }
 
