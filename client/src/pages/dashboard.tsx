@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { TeamActivity } from "@/components/team-activity";
 import { NotificationPanel } from "@/components/notification-panel";
 import { OnlineUsers } from "@/components/online-users";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useLanguage } from "@/contexts/language-context";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { 
@@ -41,6 +43,7 @@ interface DashboardMetrics {
 
 export default function Dashboard() {
   const [showAIModal, setShowAIModal] = useState(false);
+  const { t } = useLanguage();
 
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
@@ -72,14 +75,14 @@ export default function Dashboard() {
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+              <h1 className="text-2xl font-semibold text-foreground">{t('nav.dashboard')}</h1>
               <p className="text-sm text-muted-foreground">Welcome back, Sarah! Here's your recruitment overview.</p>
             </div>
             
             <div className="flex items-center space-x-4">
               <div className="relative">
                 <Input 
-                  placeholder="Search candidates, jobs..." 
+                  placeholder={t('common.search') + "..."} 
                   className="w-64 pl-10"
                   data-testid="search-input"
                 />
@@ -88,8 +91,10 @@ export default function Dashboard() {
               
               <Button data-testid="button-add-candidate">
                 <Plus className="w-4 h-4 mr-2" />
-                Add Candidate
+                {t('candidates.addNew')}
               </Button>
+              
+              <LanguageToggle />
               
               <NotificationPanel />
             </div>
@@ -104,7 +109,7 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Total Candidates</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t('dashboard.totalCandidates')}</p>
                     <p className="text-3xl font-bold text-foreground" data-testid="text-total-candidates">
                       {metrics?.totalCandidates || 0}
                     </p>
@@ -124,7 +129,7 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Active Jobs</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t('dashboard.activeJobs')}</p>
                     <p className="text-3xl font-bold text-foreground" data-testid="text-active-jobs">
                       {metrics?.activeJobs || 0}
                     </p>
@@ -187,7 +192,7 @@ export default function Dashboard() {
             <Card className="lg:col-span-2" data-testid="card-recruitment-funnel">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Recruitment Funnel</CardTitle>
+                  <CardTitle>{t('dashboard.recruitmentFunnel')}</CardTitle>
                   <select className="border border-border rounded-md px-3 py-1 text-sm bg-background">
                     <option>Last 30 days</option>
                     <option>Last 90 days</option>
@@ -200,7 +205,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 bg-chart-1 rounded"></div>
-                      <span className="text-sm font-medium">Applications Received</span>
+                      <span className="text-sm font-medium">{t('funnel.applicationsReceived')}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold" data-testid="text-applications">
@@ -213,7 +218,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 bg-chart-2 rounded"></div>
-                      <span className="text-sm font-medium">Screening Passed</span>
+                      <span className="text-sm font-medium">{t('funnel.screeningPassed')}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold" data-testid="text-screening">
@@ -226,7 +231,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 bg-chart-3 rounded"></div>
-                      <span className="text-sm font-medium">Interviews Scheduled</span>
+                      <span className="text-sm font-medium">{t('funnel.interviewsScheduled')}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold" data-testid="text-interviews-scheduled">
@@ -239,7 +244,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 bg-chart-5 rounded"></div>
-                      <span className="text-sm font-medium">Hired</span>
+                      <span className="text-sm font-medium">{t('funnel.hired')}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold" data-testid="text-hired">
@@ -261,7 +266,7 @@ export default function Dashboard() {
                     <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                       <Bot className="text-primary-foreground w-4 h-4" />
                     </div>
-                    <CardTitle>AI Insights</CardTitle>
+                    <CardTitle>{t('dashboard.aiInsights')}</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -293,7 +298,7 @@ export default function Dashboard() {
                     onClick={() => setShowAIModal(true)}
                     data-testid="button-open-ai-assistant"
                   >
-                    Open AI Assistant
+                    {t('dashboard.openAiAssistant')}
                   </Button>
                 </CardContent>
               </Card>
@@ -310,9 +315,9 @@ export default function Dashboard() {
           <Card className="mt-8" data-testid="card-top-candidates">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Top Matching Candidates</CardTitle>
+                <CardTitle>{t('dashboard.topCandidates')}</CardTitle>
                 <Button variant="ghost" data-testid="button-view-all-candidates">
-                  View all candidates →
+                  {t('dashboard.viewAllCandidates')} →
                 </Button>
               </div>
             </CardHeader>
@@ -322,11 +327,11 @@ export default function Dashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        <th className="text-left text-sm font-medium text-muted-foreground py-2">Candidate</th>
-                        <th className="text-left text-sm font-medium text-muted-foreground py-2">Position</th>
-                        <th className="text-left text-sm font-medium text-muted-foreground py-2">Match Score</th>
-                        <th className="text-left text-sm font-medium text-muted-foreground py-2">Status</th>
-                        <th className="text-left text-sm font-medium text-muted-foreground py-2">Action</th>
+                        <th className="text-left text-sm font-medium text-muted-foreground py-2">{t('candidates.name')}</th>
+                        <th className="text-left text-sm font-medium text-muted-foreground py-2">{t('candidates.position')}</th>
+                        <th className="text-left text-sm font-medium text-muted-foreground py-2">{t('candidates.matchScore')}</th>
+                        <th className="text-left text-sm font-medium text-muted-foreground py-2">{t('candidates.status')}</th>
+                        <th className="text-left text-sm font-medium text-muted-foreground py-2">{t('common.action')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -369,7 +374,7 @@ export default function Dashboard() {
                           </td>
                           <td className="py-3">
                             <Button variant="ghost" size="sm" data-testid={`button-view-candidate-${candidate.id}`}>
-                              View Profile
+                              {t('candidates.viewProfile')}
                             </Button>
                           </td>
                         </tr>
@@ -380,8 +385,8 @@ export default function Dashboard() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No candidates found</p>
-                  <p className="text-sm">Add candidates to see them here</p>
+                  <p>{t('candidates.noCandidates')}</p>
+                  <p className="text-sm">{t('candidates.addCandidatesHint')}</p>
                 </div>
               )}
             </CardContent>

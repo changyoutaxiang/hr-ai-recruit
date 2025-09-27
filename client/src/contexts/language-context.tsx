@@ -41,6 +41,7 @@ const translations: Translations = {
   'common.filter': { en: 'Filter', zh: '筛选' },
   'common.export': { en: 'Export', zh: '导出' },
   'common.import': { en: 'Import', zh: '导入' },
+  'common.action': { en: 'Action', zh: '操作' },
 
   // 导航
   'nav.dashboard': { en: 'Dashboard', zh: '仪表板' },
@@ -66,6 +67,17 @@ const translations: Translations = {
   'dashboard.postJob': { en: 'Post Job', zh: '发布职位' },
   'dashboard.scheduleInterview': { en: 'Schedule Interview', zh: '安排面试' },
   'dashboard.viewReports': { en: 'View Reports', zh: '查看报告' },
+  'dashboard.recruitmentFunnel': { en: 'Recruitment Funnel', zh: '招聘漏斗' },
+  'dashboard.aiInsights': { en: 'AI Insights', zh: 'AI 洞察' },
+  'dashboard.topCandidates': { en: 'Top Matching Candidates', zh: '最佳匹配候选人' },
+  'dashboard.viewAllCandidates': { en: 'View all candidates', zh: '查看所有候选人' },
+  'dashboard.openAiAssistant': { en: 'Open AI Assistant', zh: '打开 AI 助手' },
+
+  // 招聘漏斗
+  'funnel.applicationsReceived': { en: 'Applications Received', zh: '收到申请' },
+  'funnel.screeningPassed': { en: 'Screening Passed', zh: '通过筛选' },
+  'funnel.interviewsScheduled': { en: 'Interviews Scheduled', zh: '安排面试' },
+  'funnel.hired': { en: 'Hired', zh: '已录用' },
 
   // 候选人
   'candidates.title': { en: 'Candidates', zh: '候选人' },
@@ -83,6 +95,10 @@ const translations: Translations = {
   'candidates.uploadResume': { en: 'Upload Resume', zh: '上传简历' },
   'candidates.analyzeResume': { en: 'Analyze Resume', zh: '分析简历' },
   'candidates.matchJobs': { en: 'Match Jobs', zh: '匹配职位' },
+  'candidates.matchScore': { en: 'Match Score', zh: '匹配度' },
+  'candidates.viewProfile': { en: 'View Profile', zh: '查看资料' },
+  'candidates.noCandidates': { en: 'No candidates found', zh: '未找到候选人' },
+  'candidates.addCandidatesHint': { en: 'Add candidates to see them here', zh: '添加候选人以在此显示' },
 
   // 候选人状态
   'status.applied': { en: 'Applied', zh: '已申请' },
