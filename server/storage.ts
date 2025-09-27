@@ -338,6 +338,7 @@ export class MemStorage implements IStorage {
     const user: User = {
       ...insertUser,
       id: randomUUID(),
+      role: insertUser.role || "hr_manager",
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -358,6 +359,11 @@ export class MemStorage implements IStorage {
     const job: Job = {
       ...insertJob,
       id: randomUUID(),
+      status: insertJob.status || "active",
+      salaryMin: insertJob.salaryMin ?? null,
+      salaryMax: insertJob.salaryMax ?? null,
+      requirements: insertJob.requirements ?? null,
+      createdBy: insertJob.createdBy ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -395,6 +401,22 @@ export class MemStorage implements IStorage {
     const candidate: Candidate = {
       ...insertCandidate,
       id: randomUUID(),
+      status: insertCandidate.status || "applied",
+      source: insertCandidate.source || "manual",
+      phone: insertCandidate.phone ?? null,
+      position: insertCandidate.position ?? null,
+      location: insertCandidate.location ?? null,
+      experience: insertCandidate.experience ?? null,
+      education: insertCandidate.education ?? null,
+      salaryExpectation: insertCandidate.salaryExpectation ?? null,
+      resumeUrl: insertCandidate.resumeUrl ?? null,
+      resumeText: insertCandidate.resumeText ?? null,
+      skills: insertCandidate.skills ?? null,
+      matchScore: insertCandidate.matchScore ?? null,
+      aiSummary: insertCandidate.aiSummary ?? null,
+      notes: insertCandidate.notes ?? null,
+      tags: insertCandidate.tags ?? null,
+      lastContactedAt: insertCandidate.lastContactedAt ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -470,6 +492,16 @@ export class MemStorage implements IStorage {
     const interview: Interview = {
       ...insertInterview,
       id: randomUUID(),
+      status: insertInterview.status || "scheduled",
+      interviewerId: insertInterview.interviewerId ?? null,
+      meetingLink: insertInterview.meetingLink ?? null,
+      location: insertInterview.location ?? null,
+      round: insertInterview.round ?? 1,
+      feedback: insertInterview.feedback ?? null,
+      rating: insertInterview.rating ?? null,
+      recommendation: insertInterview.recommendation ?? null,
+      interviewerNotes: insertInterview.interviewerNotes ?? null,
+      candidateNotes: insertInterview.candidateNotes ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -499,6 +531,9 @@ export class MemStorage implements IStorage {
     const conversation: AiConversation = {
       ...insertConversation,
       id: randomUUID(),
+      tokensUsed: insertConversation.tokensUsed ?? null,
+      templateId: insertConversation.templateId ?? null,
+      context: insertConversation.context ?? null,
       createdAt: new Date(),
     };
     this.aiConversations.set(conversation.id, conversation);
@@ -516,6 +551,9 @@ export class MemStorage implements IStorage {
     const match: JobMatch = {
       ...insertMatch,
       id: randomUUID(),
+      matchReasons: insertMatch.matchReasons ?? null,
+      aiAnalysis: insertMatch.aiAnalysis ?? null,
+      basicMatchScore: insertMatch.basicMatchScore ?? null,
       createdAt: new Date(),
     };
     this.jobMatches.set(match.id, match);
@@ -539,6 +577,10 @@ export class MemStorage implements IStorage {
     const history: CandidateStatusHistory = {
       ...insertHistory,
       id: randomUUID(),
+      oldStatus: insertHistory.oldStatus ?? null,
+      reason: insertHistory.reason ?? null,
+      notes: insertHistory.notes ?? null,
+      changedBy: insertHistory.changedBy ?? null,
       createdAt: new Date(),
     };
     this.candidateStatusHistory.set(history.id, history);

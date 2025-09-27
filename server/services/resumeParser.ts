@@ -1,4 +1,4 @@
-import * as pdfParse from "pdf-parse";
+// import * as pdfParse from "pdf-parse"; // Using dynamic import to avoid initialization issues
 
 export interface ParsedResume {
   text: string;
@@ -26,6 +26,8 @@ export class ResumeParserService {
 
   private async parsePDF(buffer: Buffer): Promise<ParsedResume> {
     try {
+      // Use dynamic import to avoid initialization issues
+      const pdfParse = (await import("pdf-parse")).default;
       const data = await pdfParse(buffer);
       
       return {
