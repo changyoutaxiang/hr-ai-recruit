@@ -43,12 +43,21 @@ const translations: Translations = {
   'common.import': { en: 'Import', zh: '导入' },
   'common.action': { en: 'Action', zh: '操作' },
 
+  // 品牌
+  'brand.name': { en: 'AI Recruit', zh: 'AI 招聘' },
+  'brand.tagline': { en: 'Smart Hiring Platform', zh: '智能招聘平台' },
+
   // 导航
   'nav.dashboard': { en: 'Dashboard', zh: '仪表板' },
   'nav.candidates': { en: 'Candidates', zh: '候选人' },
   'nav.jobs': { en: 'Jobs', zh: '职位' },
   'nav.interviews': { en: 'Interviews', zh: '面试' },
   'nav.assistant': { en: 'AI Assistant', zh: 'AI 助手' },
+  'nav.reports': { en: 'Reports', zh: '报告' },
+  'nav.funnelAnalysis': { en: 'Funnel Analysis', zh: '漏斗分析' },
+  'nav.preferences': { en: 'Preferences', zh: '偏好设置' },
+  'nav.templates': { en: 'Templates', zh: '模板' },
+  'nav.analytics': { en: 'Analytics', zh: '分析' },
   'nav.settings': { en: 'Settings', zh: '设置' },
   'nav.profile': { en: 'Profile', zh: '个人资料' },
   'nav.logout': { en: 'Logout', zh: '退出登录' },

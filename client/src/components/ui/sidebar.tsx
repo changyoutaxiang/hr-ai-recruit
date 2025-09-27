@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useLocation } from "wouter";
+import { useLanguage } from "@/contexts/language-context";
 import { 
   LayoutDashboard, 
   Users, 
@@ -14,22 +15,22 @@ import {
   FileText
 } from "lucide-react";
 
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Candidates", href: "/candidates", icon: Users },
-  { name: "Job Postings", href: "/jobs", icon: Briefcase },
-  { name: "Interviews", href: "/interviews", icon: Calendar },
-  { name: "AI Assistant", href: "/ai-assistant", icon: Bot },
+const getNavigation = (t: (key: string) => string) => [
+  { name: t('nav.dashboard'), href: "/", icon: LayoutDashboard, key: "Dashboard" },
+  { name: t('nav.candidates'), href: "/candidates", icon: Users, key: "Candidates" },
+  { name: t('nav.jobs'), href: "/jobs", icon: Briefcase, key: "Job Postings" },
+  { name: t('nav.interviews'), href: "/interviews", icon: Calendar, key: "Interviews" },
+  { name: t('nav.assistant'), href: "/ai-assistant", icon: Bot, key: "AI Assistant" },
 ];
 
-const analytics = [
-  { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Funnel Analysis", href: "/funnel", icon: TrendingUp },
+const getAnalytics = (t: (key: string) => string) => [
+  { name: t('nav.reports'), href: "/reports", icon: BarChart3, key: "Reports" },
+  { name: t('nav.funnelAnalysis'), href: "/funnel", icon: TrendingUp, key: "Funnel Analysis" },
 ];
 
-const settings = [
-  { name: "Preferences", href: "/preferences", icon: Settings },
-  { name: "Templates", href: "/templates", icon: FileText },
+const getSettings = (t: (key: string) => string) => [
+  { name: t('nav.preferences'), href: "/preferences", icon: Settings, key: "Preferences" },
+  { name: t('nav.templates'), href: "/templates", icon: FileText, key: "Templates" },
 ];
 
 interface SidebarProps {
@@ -38,6 +39,11 @@ interface SidebarProps {
 
 export function Sidebar({ className }: SidebarProps) {
   const [location] = useLocation();
+  const { t } = useLanguage();
+  
+  const navigation = getNavigation(t);
+  const analytics = getAnalytics(t);
+  const settings = getSettings(t);
 
   return (
     <div className={cn("flex h-full w-60 flex-col bg-card border-r border-border", className)}>
@@ -48,8 +54,8 @@ export function Sidebar({ className }: SidebarProps) {
             <Bot className="w-4 h-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="font-semibold text-foreground">AI Recruit</h1>
-            <p className="text-xs text-muted-foreground">Smart Hiring Platform</p>
+            <h1 className="font-semibold text-foreground">{t('brand.name')}</h1>
+            <p className="text-xs text-muted-foreground">{t('brand.tagline')}</p>
           </div>
         </div>
       </div>
@@ -72,22 +78,22 @@ export function Sidebar({ className }: SidebarProps) {
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.name}</span>
-                {item.name === "Candidates" && (
+                {item.key === "Candidates" && (
                   <span className="ml-auto bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
                     24
                   </span>
                 )}
-                {item.name === "Job Postings" && (
+                {item.key === "Job Postings" && (
                   <span className="ml-auto bg-chart-2 text-white text-xs px-2 py-0.5 rounded-full">
                     8
                   </span>
                 )}
-                {item.name === "Interviews" && (
+                {item.key === "Interviews" && (
                   <span className="ml-auto bg-chart-3 text-white text-xs px-2 py-0.5 rounded-full">
                     12
                   </span>
                 )}
-                {item.name === "AI Assistant" && (
+                {item.key === "AI Assistant" && (
                   <span className="ml-auto w-2 h-2 bg-chart-2 rounded-full"></span>
                 )}
               </a>
@@ -97,7 +103,7 @@ export function Sidebar({ className }: SidebarProps) {
 
         <div className="mt-8">
           <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Analytics
+            {t('nav.analytics')}
           </h3>
           <nav className="mt-2 space-y-1">
             {analytics.map((item) => (
@@ -115,7 +121,7 @@ export function Sidebar({ className }: SidebarProps) {
 
         <div className="mt-8">
           <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Settings
+            {t('nav.settings')}
           </h3>
           <nav className="mt-2 space-y-1">
             {settings.map((item) => (
