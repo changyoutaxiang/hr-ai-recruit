@@ -43,7 +43,7 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/metrics"],
   });
 
-  const { data: candidates } = useQuery({
+  const { data: candidates } = useQuery<any[]>({
     queryKey: ["/api/candidates"],
   });
 

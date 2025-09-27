@@ -154,7 +154,7 @@ export function CandidateCard({ candidate, onUploadResume }: CandidateCardProps)
           <div>
             <p className="text-muted-foreground">Salary Expectation</p>
             <p className="font-medium" data-testid={`text-salary-${candidate.id}`}>
-              {formatSalary(candidate.salaryExpectation)}
+              {formatSalary(candidate.salaryExpectation ?? undefined)}
             </p>
           </div>
         </div>
@@ -235,7 +235,7 @@ export function CandidateCard({ candidate, onUploadResume }: CandidateCardProps)
         {/* Last Contacted */}
         <div className="flex items-center text-xs text-muted-foreground">
           <Clock className="w-3 h-3 mr-1" />
-          <span>Last contacted: {formatLastContacted(candidate.lastContactedAt)}</span>
+          <span>Last contacted: {formatLastContacted(candidate.lastContactedAt ?? undefined)}</span>
         </div>
 
         {/* Actions */}

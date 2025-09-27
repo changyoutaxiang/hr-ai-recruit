@@ -149,7 +149,7 @@ export function JobCard({ job }: JobCardProps) {
           <div>
             <p className="text-muted-foreground">Salary</p>
             <p className="font-medium" data-testid={`text-salary-${job.id}`}>
-              {formatSalary(job.salaryMin, job.salaryMax)}
+              {formatSalary(job.salaryMin ?? undefined, job.salaryMax ?? undefined)}
             </p>
           </div>
         </div>

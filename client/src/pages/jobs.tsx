@@ -44,7 +44,7 @@ export default function Jobs() {
     return matchesSearch && matchesStatus && matchesDepartment;
   }) || [];
 
-  const departments = [...new Set(jobs?.map(job => job.department) || [])];
+  const departments = Array.from(new Set(jobs?.map(job => job.department) || []));
   
   const jobStats = {
     total: jobs?.length || 0,

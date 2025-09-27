@@ -28,12 +28,12 @@ export function InterviewCard({ interview }: InterviewCardProps) {
   const { toast } = useToast();
 
   // Fetch candidate and job details
-  const { data: candidate } = useQuery({
+  const { data: candidate } = useQuery<any>({
     queryKey: ["/api/candidates", interview.candidateId],
     enabled: !!interview.candidateId,
   });
 
-  const { data: job } = useQuery({
+  const { data: job } = useQuery<any>({
     queryKey: ["/api/jobs", interview.jobId],
     enabled: !!interview.jobId,
   });

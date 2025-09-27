@@ -39,7 +39,7 @@ export function AiChat({ initialMessage, onBack }: AiChatProps) {
   const { toast } = useToast();
 
   // Load conversation history
-  const { data: conversationHistory } = useQuery({
+  const { data: conversationHistory } = useQuery<any[]>({
     queryKey: ["/api/ai/conversations", sessionId],
     enabled: !initialMessage, // Don't load history if we have an initial message
   });
