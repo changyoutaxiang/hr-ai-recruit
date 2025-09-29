@@ -21,9 +21,10 @@ import { type Candidate } from "@shared/schema";
 interface CandidateCardProps {
   candidate: Candidate;
   onUploadResume?: () => void;
+  onViewMatches?: (candidateId: string) => void;
 }
 
-export function CandidateCard({ candidate, onUploadResume }: CandidateCardProps) {
+export function CandidateCard({ candidate, onUploadResume, onViewMatches }: CandidateCardProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "applied":
@@ -239,28 +240,44 @@ export function CandidateCard({ candidate, onUploadResume }: CandidateCardProps)
         </div>
 
         {/* Actions */}
-        <div className="flex space-x-2 pt-2">
-          <Button size="sm" className="flex-1" data-testid={`button-view-${candidate.id}`}>
-            <Eye className="w-4 h-4 mr-2" />
-            View Profile
-          </Button>
-          <Button size="sm" variant="outline" data-testid={`button-message-${candidate.id}`}>
-            <MessageSquare className="w-4 h-4" />
-          </Button>
-          {candidate.resumeUrl ? (
-            <Button size="sm" variant="outline" data-testid={`button-resume-${candidate.id}`}>
-              <FileText className="w-4 h-4" />
+        <div className="flex flex-col space-y-2 pt-2">
+          <div className="flex space-x-2">
+            <Button size="sm" className="flex-1" data-testid={`button-view-${candidate.id}`}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Profile
             </Button>
-          ) : (
-            <Button 
-              size="sm" 
-              variant="outline" 
-              onClick={onUploadResume}
-              data-testid={`button-upload-resume-${candidate.id}`}
-            >
-              <Upload className="w-4 h-4" />
+            {onViewMatches && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => onViewMatches(candidate.id)}
+                data-testid={`button-view-matches-${candidate.id}`}
+              >
+                <Brain className="w-4 h-4 mr-2" />
+                AI Matches
+              </Button>
+            )}
+          </div>
+          <div className="flex space-x-2">
+            <Button size="sm" variant="outline" data-testid={`button-message-${candidate.id}`}>
+              <MessageSquare className="w-4 h-4" />
             </Button>
-          )}
+            {candidate.resumeUrl ? (
+              <Button size="sm" variant="outline" data-testid={`button-resume-${candidate.id}`}>
+                <FileText className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onUploadResume}
+                data-testid={`button-upload-resume-${candidate.id}`}
+              >
+                <Upload className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Last Updated */}

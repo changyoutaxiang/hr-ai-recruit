@@ -5,15 +5,18 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { JobCard } from "@/components/job-card";
+import { JobCandidateMatches } from "@/components/job-candidate-matches";
+import { HiringDecisionComparison } from "@/components/hiring-decision-comparison";
 import { useJobs } from "@/hooks/use-jobs";
 import { useLanguage } from "@/contexts/language-context";
-import { 
-  Search, 
-  Filter, 
-  Plus, 
+import {
+  Search,
+  Filter,
+  Plus,
   Briefcase,
   MapPin,
-  DollarSign
+  DollarSign,
+  X
 } from "lucide-react";
 import {
   Select,
@@ -28,6 +31,8 @@ export default function Jobs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [selectedJobForMatches, setSelectedJobForMatches] = useState<string | null>(null);
+  const [selectedJobForComparison, setSelectedJobForComparison] = useState<string | null>(null);
   
   const { 
     data: jobs, 
@@ -66,6 +71,80 @@ export default function Jobs() {
               {t('jobs.retry')}
             </Button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedJobForMatches) {
+    const selectedJob = jobs?.find(j => j.id === selectedJobForMatches);
+
+    return (
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="bg-card border-b border-border px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  Candidate Matches: {selectedJob?.title}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  AI-ranked candidates for this position
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedJobForMatches(null)}
+                data-testid="button-back-to-jobs"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Back to Jobs
+              </Button>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto p-6">
+            <JobCandidateMatches jobId={selectedJobForMatches} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedJobForComparison) {
+    const selectedJob = jobs?.find(j => j.id === selectedJobForComparison);
+
+    return (
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="bg-card border-b border-border px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  招聘决策对比: {selectedJob?.title}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  AI 驱动的候选人决策分析对比
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedJobForComparison(null)}
+                data-testid="button-back-to-jobs"
+              >
+                <X className="w-4 h-4 mr-2" />
+                返回职位列表
+              </Button>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto p-6">
+            <HiringDecisionComparison jobId={selectedJobForComparison} />
+          </main>
         </div>
       </div>
     );
@@ -170,9 +249,11 @@ export default function Jobs() {
           ) : filteredJobs.length > 0 ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {filteredJobs.map((job) => (
-                <JobCard 
-                  key={job.id} 
+                <JobCard
+                  key={job.id}
                   job={job}
+                  onViewMatches={(jobId) => setSelectedJobForMatches(jobId)}
+                  onViewComparison={(jobId) => setSelectedJobForComparison(jobId)}
                   data-testid={`card-job-${job.id}`}
                 />
               ))}

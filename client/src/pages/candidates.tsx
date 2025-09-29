@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { CandidateCard } from "@/components/candidate-card";
 import { ResumeUploader } from "@/components/resume-uploader";
+import { CandidateJobMatches } from "@/components/candidate-job-matches";
 import { useCandidates } from "@/hooks/use-candidates";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -45,6 +46,7 @@ export default function Candidates() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedCandidateForResume, setSelectedCandidateForResume] = useState<string | null>(null);
+  const [selectedCandidateForMatches, setSelectedCandidateForMatches] = useState<string | null>(null);
   const { toast } = useToast();
   
   const { 
@@ -122,6 +124,43 @@ export default function Candidates() {
               {t('jobs.retry')}
             </Button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedCandidateForMatches) {
+    const selectedCandidate = candidates?.find(c => c.id === selectedCandidateForMatches);
+
+    return (
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="bg-card border-b border-border px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  Job Matches: {selectedCandidate?.name}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  AI-ranked positions for this candidate
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedCandidateForMatches(null)}
+                data-testid="button-back-to-candidates"
+              >
+                <X className="w-4 h-4 mr-2" />
+                {t('candidates.backToCandidates')}
+              </Button>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto p-6">
+            <CandidateJobMatches candidateId={selectedCandidateForMatches} />
+          </main>
         </div>
       </div>
     );
@@ -293,10 +332,11 @@ export default function Candidates() {
           ) : filteredCandidates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredCandidates.map((candidate) => (
-                <CandidateCard 
-                  key={candidate.id} 
+                <CandidateCard
+                  key={candidate.id}
                   candidate={candidate}
                   onUploadResume={() => setSelectedCandidateForResume(candidate.id)}
+                  onViewMatches={(candidateId) => setSelectedCandidateForMatches(candidateId)}
                   data-testid={`card-candidate-${candidate.id}`}
                 />
               ))}

@@ -1,14 +1,28 @@
 import OpenAI from "openai";
 
-// Using Openrouter with Google Gemini 2.5 Flash Preview model
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENROUTER_API_KEY,
+// Using Openrouter with configurable AI models
+const openai = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY || '',
   baseURL: "https://openrouter.ai/api/v1",
   defaultHeaders: {
-    "HTTP-Referer": "https://ai-recruit.replit.app", // Optional, for rankings on openrouter.ai
-    "X-Title": "AI Recruit System", // Optional, shows in rankings on openrouter.ai
+    "HTTP-Referer": "https://hr-recruit-system.vercel.app",
+    "X-Title": "AI Recruit System",
   },
 });
+
+// 针对不同任务使用不同模型以平衡效果和成本
+const MODELS = {
+  // 简历分析使用最强旗舰模型 GPT-5，确保最高准确性
+  RESUME_ANALYSIS: process.env.RESUME_AI_MODEL || "openai/gpt-5",
+  // 画像生成使用高质量模型
+  PROFILE_GENERATION: process.env.PROFILE_AI_MODEL || "openai/gpt-5",
+  // 匹配分析使用推理型模型
+  MATCHING: process.env.MATCHING_AI_MODEL || "google/gemini-2.5-pro",
+  // 聊天助手使用经济型模型
+  CHAT: process.env.CHAT_AI_MODEL || "google/gemini-2.5-flash",
+  // 默认模型
+  DEFAULT: process.env.AI_MODEL || "google/gemini-2.5-pro"
+};
 
 export interface ResumeAnalysis {
   summary: string;
@@ -30,27 +44,44 @@ export class AIService {
   async analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
     try {
       const response = await openai.chat.completions.create({
-        model: "google/gemini-2.5-flash-preview-09-2025",
+        model: MODELS.RESUME_ANALYSIS,
         messages: [
           {
             role: "system",
-            content: `You are an expert HR recruiter and resume analyst. Analyze the provided resume and extract structured information. Return the analysis as JSON with the following structure:
-            {
-              "summary": "Brief professional summary",
-              "skills": ["skill1", "skill2"],
-              "experience": 5,
-              "education": "Education details",
-              "strengths": ["strength1", "strength2"],
-              "weaknesses": ["weakness1", "weakness2"],
-              "recommendations": ["recommendation1", "recommendation2"]
-            }`
+            content: `You are an expert HR recruiter specializing in analyzing resumes from various cultural contexts, especially Chinese resumes.
+
+Key Instructions:
+1. Accurately extract information from both Chinese and English text
+2. Understand Chinese job titles, company names, and educational institutions
+3. Recognize Chinese date formats (如 2020年3月-2023年5月)
+4. Identify skills mentioned in Chinese technical terms
+5. Pay attention to project descriptions and achievements
+6. Extract both explicit and implicit skills from work experience
+
+Return the analysis as JSON with the following structure:
+{
+  "summary": "Comprehensive professional summary capturing key strengths and career trajectory (in the same language as the resume)",
+  "skills": ["skill1", "skill2", "..."], // Include technical skills, soft skills, tools, and frameworks
+  "experience": 5, // Total years of work experience as a number
+  "education": "Highest education level and major field (e.g., 硕士-计算机科学, Bachelor-Computer Science)",
+  "strengths": ["strength1", "strength2", "strength3"], // Key professional strengths
+  "weaknesses": ["area1", "area2"], // Potential areas for improvement
+  "recommendations": ["recommendation1", "recommendation2"] // Suggestions for career development
+}
+
+Important:
+- For Chinese resumes, keep the summary in Chinese
+- Extract ALL relevant skills, not just explicitly listed ones
+- Calculate experience accurately from work history dates
+- Identify strengths from achievements and project outcomes`
           },
           {
             role: "user",
-            content: `Please analyze this resume and provide structured feedback:\n\n${resumeText}`
+            content: `Please analyze this resume thoroughly and provide detailed structured feedback:\n\n${resumeText}`
           }
         ],
         response_format: { type: "json_object" },
+        temperature: 0.3, // Lower temperature for more consistent extraction
       });
 
       const content = response.choices[0].message.content;
@@ -77,7 +108,7 @@ export class AIService {
   }): Promise<MatchResult> {
     try {
       const response = await openai.chat.completions.create({
-        model: "google/gemini-2.5-flash-preview-09-2025",
+        model: MODELS.MATCHING,
         messages: [
           {
             role: "system",
@@ -124,7 +155,7 @@ export class AIService {
   async generateInterviewQuestions(jobTitle: string, requirements: string[]): Promise<string[]> {
     try {
       const response = await openai.chat.completions.create({
-        model: "google/gemini-2.5-flash-preview-09-2025",
+        model: MODELS.DEFAULT,
         messages: [
           {
             role: "system",
@@ -165,7 +196,7 @@ export class AIService {
       - Job posting optimization
       - Recruitment strategy advice
       - Data interpretation and insights
-      
+
       Be helpful, professional, and provide actionable advice.`;
 
       const messages: any[] = [
@@ -179,7 +210,7 @@ export class AIService {
       messages.push({ role: "user", content: message });
 
       const response = await openai.chat.completions.create({
-        model: "google/gemini-2.5-flash-preview-09-2025",
+        model: MODELS.CHAT,
         messages,
       });
 
@@ -192,6 +223,68 @@ export class AIService {
     } catch (error) {
       console.error("Error in AI chat:", error);
       throw new Error("Failed to get AI response: " + (error instanceof Error ? error.message : "Unknown error"));
+    }
+  }
+
+  /**
+   * 生成结构化响应（返回 JSON）
+   */
+  async generateStructuredResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<any> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: MODELS[modelType],
+        messages: [
+          {
+            role: "system",
+            content: "你是一位专业的HR专家，请用中文回答。返回JSON格式的结构化数据。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from AI");
+      }
+
+      return JSON.parse(content);
+    } catch (error) {
+      console.error("Error generating structured response:", error);
+      // 返回空对象而不是抛出错误，让调用方使用默认值
+      return {};
+    }
+  }
+
+  /**
+   * 生成文本响应
+   */
+  async generateTextResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<string> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: MODELS[modelType],
+        messages: [
+          {
+            role: "system",
+            content: "你是一位专业的HR专家，请用中文提供专业、客观的分析和建议。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 500
+      });
+
+      return response.choices[0]?.message?.content || "";
+    } catch (error) {
+      console.error("Error generating text response:", error);
+      return "";
     }
   }
 }

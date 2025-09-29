@@ -5,8 +5,9 @@ import { Progress } from "@/components/ui/progress";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { ResumeAnalysis } from "@/components/resume-analysis";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { retryFetch, retryPost } from "@/lib/retry-fetch";
+import { getUserFriendlyErrorMessage } from "@/lib/error-handling";
 import { 
   Upload, 
   FileText, 
@@ -38,37 +39,51 @@ export function ResumeUploader({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("resume", file);
-      
-      const response = await fetch(`/api/candidates/${candidateId}/resume`, {
+
+      const response = await retryFetch(`/api/candidates/${candidateId}/resume`, {
         method: "POST",
         body: formData,
         credentials: "include",
+      }, {
+        maxRetries: 3,
+        retryDelay: 2000,
+        exponentialBackoff: true,
+        timeout: 60000, // 文件上传需要更长超时时间
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Failed to process resume");
-      }
 
       return response.json();
     },
-    onSuccess: (data: ResumeAnalysisResult) => {
+    onSuccess: (data: ResumeAnalysisResult & { profile?: { id: string; version: number; generated: boolean }; profileError?: string }) => {
       setAnalysisResult(data);
       setUploadStatus("complete");
       onAnalysisComplete?.(data);
       onCandidateUpdate?.(data.candidate);
-      
-      toast({
-        title: "Resume processed successfully",
-        description: "AI analysis complete. Review the insights below.",
-      });
+
+      if (data.profile?.generated) {
+        toast({
+          title: "简历分析完成",
+          description: `AI 分析已完成，初始画像（版本 ${data.profile.version}）已自动生成！`,
+        });
+      } else if (data.profileError) {
+        toast({
+          title: "简历分析完成",
+          description: "AI 分析已完成，但画像生成失败。您可以稍后在候选人详情页手动生成。",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "简历分析完成",
+          description: "AI 分析已完成，请查看下方分析结果。",
+        });
+      }
     },
     onError: (error: Error) => {
       setUploadStatus("error");
-      setError(error.message);
+      const friendlyMessage = getUserFriendlyErrorMessage(error);
+      setError(friendlyMessage);
       toast({
-        title: "Resume processing failed",
-        description: error.message,
+        title: "简历处理失败",
+        description: friendlyMessage,
         variant: "destructive",
       });
     },
@@ -76,14 +91,17 @@ export function ResumeUploader({
 
   const handleGetUploadParameters = async () => {
     try {
-      const response = await apiRequest("POST", "/api/objects/upload");
-      const data = await response.json();
+      const data = await retryPost("/api/objects/upload", {}, {
+        maxRetries: 3,
+        retryDelay: 1000,
+        exponentialBackoff: true,
+      });
       return {
         method: "PUT" as const,
         url: data.uploadURL,
       };
     } catch (error) {
-      throw new Error("Failed to get upload URL");
+      throw new Error(getUserFriendlyErrorMessage(error));
     }
   };
 

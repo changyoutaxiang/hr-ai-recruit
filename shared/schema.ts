@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, jsonb, decimal, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { pgTable, text, varchar, integer, timestamp, jsonb, decimal, boolean, unique, index } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
@@ -59,17 +59,22 @@ export const interviews = pgTable("interviews", {
   jobId: varchar("job_id").references(() => jobs.id).notNull(),
   interviewerId: varchar("interviewer_id").references(() => users.id),
   scheduledDate: timestamp("scheduled_date").notNull(),
-  duration: integer("duration").notNull(), // minutes
-  type: text("type").notNull(), // phone, video, in-person
-  status: text("status").notNull().default("scheduled"), // scheduled, completed, cancelled, no-show
+  duration: integer("duration").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("scheduled"),
   meetingLink: text("meeting_link"),
   location: text("location"),
   round: integer("round").notNull().default(1),
   feedback: text("feedback"),
-  rating: integer("rating"), // 1-5
-  recommendation: text("recommendation"), // hire, reject, next-round
+  rating: integer("rating"),
+  recommendation: text("recommendation"),
   interviewerNotes: text("interviewer_notes"),
   candidateNotes: text("candidate_notes"),
+  transcription: text("transcription"),
+  recordingUrl: text("recording_url"),
+  transcriptionMethod: text("transcription_method"),
+  aiKeyFindings: jsonb("ai_key_findings"),
+  aiConcernAreas: jsonb("ai_concern_areas"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -158,15 +163,144 @@ export const userSessions = pgTable("user_sessions", {
 
 export const comments = pgTable("comments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  entityType: text("entity_type").notNull(), // candidate, job, interview
+  entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
   content: text("content").notNull(),
   authorId: varchar("author_id").references(() => users.id).notNull(),
-  isInternal: boolean("is_internal").notNull().default(true), // internal team notes vs external
-  mentions: jsonb("mentions"), // array of user IDs mentioned
+  isInternal: boolean("is_internal").notNull().default(true),
+  mentions: jsonb("mentions"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+/**
+ * 候选人动态画像表
+ * 记录候选人在招聘流程中的画像演进，每个阶段生成新版本
+ */
+export const candidateProfiles = pgTable("candidate_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  /** 关联的候选人 ID，删除候选人时级联删除画像 */
+  candidateId: varchar("candidate_id")
+    .references(() => candidates.id, { onDelete: "cascade" })
+    .notNull(),
+
+  /** 关联的职位 ID（可选），删除职位时设为 NULL */
+  jobId: varchar("job_id")
+    .references(() => jobs.id, { onDelete: "set null" }),
+
+  /** 画像版本号，从 1 开始递增，同一候选人的版本号唯一 */
+  version: integer("version").notNull(),
+
+  /** 画像生成阶段：resume、after_interview_1、after_interview_2 等 */
+  stage: text("stage").notNull(),
+
+  /** 画像详细数据（技能、经验、匹配度等） */
+  profileData: jsonb("profile_data").notNull(),
+
+  /** AI 评估的总体匹配分数（0-100） */
+  overallScore: decimal("overall_score", { precision: 5, scale: 2 }),
+
+  /** 用于生成此版本画像的数据源 */
+  dataSources: jsonb("data_sources"),
+
+  /** AI 识别的信息缺口 */
+  gaps: jsonb("gaps"),
+
+  /** AI 识别的候选人优势 */
+  strengths: jsonb("strengths"),
+
+  /** AI 识别的潜在顾虑 */
+  concerns: jsonb("concerns"),
+
+  /** AI 生成的候选人画像总结 */
+  aiSummary: text("ai_summary"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // 确保同一候选人的版本号唯一
+  uniqueCandidateVersion: unique().on(table.candidateId, table.version),
+}));
+
+/**
+ * 面试准备表
+ * 存储为每次面试生成的AI准备材料，帮助面试官更好地进行面试
+ */
+export const interviewPreparations = pgTable("interview_preparations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  /** 关联的候选人ID */
+  candidateId: varchar("candidate_id")
+    .references(() => candidates.id, { onDelete: "cascade" })
+    .notNull(),
+
+  /** 关联的职位ID (冗余存储以提高查询性能) */
+  jobId: varchar("job_id")
+    .references(() => jobs.id, { onDelete: "set null" }),
+
+  /** 关联的面试ID */
+  interviewId: varchar("interview_id")
+    .references(() => interviews.id, { onDelete: "cascade" })
+    .notNull(),
+
+  /** 为哪位面试官生成的准备材料 */
+  generatedFor: varchar("generated_for")
+    .references(() => users.id, { onDelete: "set null" }),
+
+  /** 准备材料状态 */
+  status: text("status").notNull().default("generating"),
+  // 可选值: generating, completed, failed
+
+  /** 候选人当前状态摘要 */
+  candidateContext: jsonb("candidate_context").notNull(),
+  // 包含: summary, currentScore, strengths[], concerns[]
+
+  /** AI建议的面试问题 */
+  suggestedQuestions: jsonb("suggested_questions").notNull(),
+  // 数组，每个元素包含: question, purpose, probing
+
+  /** 重点考察领域 */
+  focusAreas: jsonb("focus_areas").notNull(),
+  // 数组，每个元素包含: area, why, signals[]
+
+  /** 前几轮面试未充分覆盖的点 */
+  previousGaps: jsonb("previous_gaps"),
+  // 字符串数组
+
+  /** 给面试官的提示和建议 */
+  interviewerTips: jsonb("interviewer_tips"),
+  // 字符串数组
+
+  /** 面试准备材料版本，支持更新 */
+  version: integer("version").notNull().default(1),
+
+  /** AI模型生成的置信度 (0-100) */
+  confidence: integer("confidence"),
+
+  /** 生成时使用的AI模型 */
+  aiModel: text("ai_model"),
+
+  /** 是否已被面试官查看 */
+  viewedAt: timestamp("viewed_at"),
+
+  /** 面试官的反馈评分 (1-5分) */
+  feedbackRating: integer("feedback_rating"),
+  /** 面试官的反馈评论 */
+  feedbackComment: text("feedback_comment"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // 索引优化查询性能
+  candidateIdx: index("idx_interview_prep_candidate").on(table.candidateId),
+  interviewIdx: index("idx_interview_prep_interview").on(table.interviewId),
+  generatedForIdx: index("idx_interview_prep_generated_for").on(table.generatedFor),
+  createdAtIdx: index("idx_interview_prep_created_at").on(table.createdAt),
+  statusIdx: index("idx_interview_prep_status").on(table.status),
+  // 确保每个面试只有一份准备材料（通过 interviewId 的唯一性）
+  uniqueInterviewPrep: unique("unique_interview_prep").on(table.interviewId),
+}));
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -235,6 +369,74 @@ export const insertCommentSchema = createInsertSchema(comments).omit({
   updatedAt: true,
 });
 
+export const insertCandidateProfileSchema = createInsertSchema(candidateProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInterviewPreparationSchema = createInsertSchema(interviewPreparations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Hiring Decisions table for storing AI-generated hiring recommendations
+export const hiringDecisions = pgTable("hiring_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  candidateId: varchar("candidate_id")
+    .references(() => candidates.id, { onDelete: "cascade" })
+    .notNull(),
+  jobId: varchar("job_id")
+    .references(() => jobs.id, { onDelete: "cascade" })
+    .notNull(),
+
+  // Decision and recommendation
+  decision: varchar("decision", { length: 50 }).notNull(), // hire, reject, hold, next-round
+  confidence: integer("confidence"), // 0-100 confidence score
+  recommendation: text("recommendation").notNull(), // AI generated recommendation text
+
+  // Detailed analysis
+  strengths: jsonb("strengths"), // Array of key strengths
+  weaknesses: jsonb("weaknesses"), // Array of weaknesses/concerns
+  riskAssessment: jsonb("risk_assessment"), // Risk factors and mitigation
+  growthPotential: jsonb("growth_potential"), // Growth trajectory analysis
+  culturalFit: jsonb("cultural_fit"), // Cultural alignment assessment
+
+  // Comparative analysis
+  comparisonWithOthers: jsonb("comparison_with_others"), // How candidate compares to others
+  alternativeRoles: jsonb("alternative_roles"), // Other suitable positions
+
+  // Conditions and next steps
+  conditions: jsonb("conditions"), // Conditions for hiring (if applicable)
+  nextSteps: jsonb("next_steps"), // Recommended next actions
+  timelineSuggestion: varchar("timeline_suggestion", { length: 255 }), // Urgency/timeline
+
+  // Compensation insights
+  compensationRange: jsonb("compensation_range"), // Suggested compensation
+  negotiationPoints: jsonb("negotiation_points"), // Key negotiation considerations
+
+  // Decision metadata
+  decidedBy: varchar("decided_by")
+    .references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  status: varchar("status", { length: 50 }).default("draft"), // draft, final, revised
+
+  // Tracking
+  viewedAt: timestamp("viewed_at", { withTimezone: true }),
+  feedbackRating: integer("feedback_rating"), // 1-5 rating
+  feedbackComment: text("feedback_comment"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const insertHiringDecisionSchema = createInsertSchema(hiringDecisions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -271,3 +473,126 @@ export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
 
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
+
+export type CandidateProfile = typeof candidateProfiles.$inferSelect;
+export type InsertCandidateProfile = z.infer<typeof insertCandidateProfileSchema>;
+
+export type InterviewPreparation = typeof interviewPreparations.$inferSelect;
+export type InsertInterviewPreparation = z.infer<typeof insertInterviewPreparationSchema>;
+
+export type HiringDecision = typeof hiringDecisions.$inferSelect;
+export type InsertHiringDecision = z.infer<typeof insertHiringDecisionSchema>;
+
+// 面试准备材料的 TypeScript 类型定义
+export const candidateContextSchema = z.object({
+  /** 候选人总体情况摘要 */
+  summary: z.string(),
+  /** 当前综合评分 */
+  currentScore: z.number().min(0).max(100),
+  /** 优势领域 */
+  strengths: z.array(z.string()),
+  /** 待考察或疑虑点 */
+  concerns: z.array(z.string()),
+});
+
+export const suggestedQuestionSchema = z.object({
+  /** 建议的问题内容 */
+  question: z.string(),
+  /** 提问目的 */
+  purpose: z.string(),
+  /** 追问建议 */
+  probing: z.array(z.string()).optional(),
+  /** 问题类别 */
+  category: z.enum(["technical", "behavioral", "situational", "cultural"]).optional(),
+});
+
+export const focusAreaSchema = z.object({
+  /** 重点考察领域 */
+  area: z.string(),
+  /** 为什么需要重点考察 */
+  why: z.string(),
+  /** 关键观察信号 */
+  signals: z.array(z.string()),
+  /** 优先级 */
+  priority: z.enum(["high", "medium", "low"]).optional(),
+});
+
+export const interviewPreparationStatusSchema = z.enum(["generating", "completed", "failed"]);
+
+export const proficiencySchema = z.enum(["beginner", "intermediate", "advanced", "expert"]);
+
+export const profileDataSchema = z.object({
+  technicalSkills: z.array(z.object({
+    skill: z.string(),
+    proficiency: proficiencySchema,
+    evidenceSource: z.string(),
+  })).optional(),
+  softSkills: z.array(z.object({
+    skill: z.string(),
+    examples: z.array(z.string()),
+  })).optional(),
+  experience: z.object({
+    totalYears: z.number().nonnegative(),
+    relevantYears: z.number().nonnegative(),
+    positions: z.array(z.object({
+      title: z.string(),
+      duration: z.string(),
+      keyAchievements: z.array(z.string()),
+    })),
+  }).optional(),
+  education: z.object({
+    level: z.string(),
+    field: z.string(),
+    institution: z.string().optional(),
+  }).optional(),
+  culturalFit: z.object({
+    workStyle: z.string(),
+    motivations: z.array(z.string()),
+    preferences: z.array(z.string()),
+  }).optional(),
+  careerTrajectory: z.object({
+    progression: z.string(),
+    growthAreas: z.array(z.string()),
+    stabilityScore: z.number().min(0).max(100),
+  }).optional(),
+  organizationalFit: z.object({
+    cultureAssessment: z.object({
+      overallScore: z.number().min(0).max(100),
+      valueAssessments: z.array(z.object({
+        valueName: z.string(),
+        score: z.number().min(0).max(100),
+        confidence: z.string(),
+        evidence: z.array(z.string()),
+        alignmentLevel: z.enum(["strong", "moderate", "weak"]),
+      })),
+      culturalStrengths: z.array(z.string()),
+      culturalRisks: z.array(z.string()),
+    }).optional(),
+    leadershipAssessment: z.object({
+      overallScore: z.number().min(0).max(100),
+      currentLevel: z.string(),
+      potentialLevel: z.string(),
+      dimensionScores: z.array(z.object({
+        dimension: z.string(),
+        score: z.number().min(0).max(100),
+        examples: z.array(z.string()),
+      })),
+      strengths: z.array(z.string()),
+      developmentAreas: z.array(z.string()),
+    }).optional(),
+    teamDynamics: z.object({
+      preferredTeamSize: z.string(),
+      collaborationStyle: z.string(),
+      conflictResolution: z.string(),
+      communicationPreference: z.string(),
+    }).optional(),
+    organizationalReadiness: z.object({
+      adaptabilityScore: z.number().min(0).max(100),
+      changeReadiness: z.string(),
+      learningAgility: z.number().min(0).max(100),
+      crossFunctionalAbility: z.string(),
+    }).optional(),
+  }).optional(),
+});
+
+export type ProfileData = z.infer<typeof profileDataSchema>;

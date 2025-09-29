@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  MapPin, 
-  Calendar, 
+import {
+  MapPin,
+  Calendar,
   DollarSign,
   Users,
   Clock,
@@ -12,25 +12,36 @@ import {
   Eye,
   Pause,
   Play,
-  X
+  X,
+  Brain,
+  BarChart3
 } from "lucide-react";
 import { type Job } from "@shared/schema";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { retryFetchJSON, retryDelete } from "@/lib/retry-fetch";
+import { getUserFriendlyErrorMessage } from "@/lib/error-handling";
 
 interface JobCardProps {
   job: Job;
+  onViewMatches?: (jobId: string) => void;
+  onViewComparison?: (jobId: string) => void;
 }
 
-export function JobCard({ job }: JobCardProps) {
+export function JobCard({ job, onViewMatches, onViewComparison }: JobCardProps) {
   const { toast } = useToast();
 
   const updateJobMutation = useMutation({
     mutationFn: async (data: Partial<Job>) => {
-      const response = await apiRequest("PUT", `/api/jobs/${job.id}`, data);
-      return response.json();
+      return retryFetchJSON(`/api/jobs/${job.id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }, {
+        maxRetries: 3,
+        retryDelay: 1000,
+        exponentialBackoff: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -39,10 +50,10 @@ export function JobCard({ job }: JobCardProps) {
         description: "Job status has been updated successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update job status.",
+        description: getUserFriendlyErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -50,7 +61,10 @@ export function JobCard({ job }: JobCardProps) {
 
   const deleteJobMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", `/api/jobs/${job.id}`);
+      return retryDelete(`/api/jobs/${job.id}`, {
+        maxRetries: 2,
+        retryDelay: 1000,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -59,10 +73,10 @@ export function JobCard({ job }: JobCardProps) {
         description: "Job has been deleted successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete job.",
+        description: getUserFriendlyErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -200,40 +214,68 @@ export function JobCard({ job }: JobCardProps) {
         </div>
 
         {/* Actions */}
-        <div className="flex space-x-2 pt-2">
-          <Button size="sm" className="flex-1" data-testid={`button-view-${job.id}`}>
-            <Eye className="w-4 h-4 mr-2" />
-            View Details
-          </Button>
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={handleStatusToggle}
-            disabled={updateJobMutation.isPending}
-            data-testid={`button-toggle-status-${job.id}`}
-          >
-            {job.status === "active" ? (
-              <Pause className="w-4 h-4" />
-            ) : (
-              <Play className="w-4 h-4" />
+        <div className="flex flex-col space-y-2 pt-2">
+          <div className="flex space-x-2">
+            <Button size="sm" className="flex-1" data-testid={`button-view-${job.id}`}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Details
+            </Button>
+            {onViewMatches && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => onViewMatches(job.id)}
+                data-testid={`button-view-matches-${job.id}`}
+              >
+                <Brain className="w-4 h-4 mr-2" />
+                AI Matches
+              </Button>
             )}
-          </Button>
-          <Button 
-            size="sm" 
-            variant="outline"
-            data-testid={`button-edit-${job.id}`}
-          >
-            <Edit className="w-4 h-4" />
-          </Button>
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={handleDelete}
-            disabled={deleteJobMutation.isPending}
-            data-testid={`button-delete-${job.id}`}
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          </div>
+          {onViewComparison && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => onViewComparison(job.id)}
+              data-testid={`button-view-comparison-${job.id}`}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              决策对比表
+            </Button>
+          )}
+          <div className="flex space-x-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleStatusToggle}
+              disabled={updateJobMutation.isPending}
+              data-testid={`button-toggle-status-${job.id}`}
+            >
+              {job.status === "active" ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid={`button-edit-${job.id}`}
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDelete}
+              disabled={deleteJobMutation.isPending}
+              data-testid={`button-delete-${job.id}`}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

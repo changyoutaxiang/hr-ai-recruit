@@ -1,4 +1,4 @@
-import { 
+import {
   type User, type InsertUser,
   type Job, type InsertJob,
   type Candidate, type InsertCandidate,
@@ -10,7 +10,10 @@ import {
   type ActivityLog, type InsertActivityLog,
   type Notification, type InsertNotification,
   type UserSession, type InsertUserSession,
-  type Comment, type InsertComment
+  type Comment, type InsertComment,
+  type CandidateProfile, type InsertCandidateProfile,
+  type InterviewPreparation, type InsertInterviewPreparation,
+  type HiringDecision, type InsertHiringDecision
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -77,6 +80,17 @@ export interface IStorage {
   createComment(comment: InsertComment): Promise<Comment>;
   getComments(entityType: string, entityId: string): Promise<Comment[]>;
 
+  // Candidate Profiles
+  createCandidateProfile(profile: Omit<InsertCandidateProfile, 'version'>): Promise<CandidateProfile>;
+  getCandidateProfiles(candidateId: string): Promise<CandidateProfile[]>;
+  getLatestCandidateProfile(candidateId: string): Promise<CandidateProfile | undefined>;
+  getCandidateProfileByVersion(candidateId: string, version: number): Promise<CandidateProfile | undefined>;
+
+  // Interview Preparations
+  createInterviewPreparation(preparation: InsertInterviewPreparation): Promise<InterviewPreparation>;
+  getInterviewPreparation(interviewId: string): Promise<InterviewPreparation | undefined>;
+  updateInterviewPreparation(id: string, updates: Partial<InterviewPreparation>): Promise<InterviewPreparation | undefined>;
+
   // Additional user methods
   getUsers(): Promise<User[]>;
 }
@@ -93,6 +107,9 @@ export class MemStorage implements IStorage {
   private notifications: Map<string, Notification> = new Map();
   private userSessions: Map<string, UserSession> = new Map();
   private comments: Map<string, Comment> = new Map();
+  private candidateProfiles: Map<string, CandidateProfile> = new Map();
+  private interviewPreparations: Map<string, InterviewPreparation> = new Map();
+  private hiringDecisions: Map<string, HiringDecision> = new Map();
 
   constructor() {
     // Initialize with some sample data for development
@@ -746,9 +763,191 @@ export class MemStorage implements IStorage {
       .sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
   }
 
+  async createCandidateProfile(profile: Omit<InsertCandidateProfile, 'version'>): Promise<CandidateProfile> {
+    if (!profile.candidateId) {
+      throw new Error('candidateId is required');
+    }
+
+    if (!profile.stage) {
+      throw new Error('stage is required');
+    }
+
+    if (!profile.profileData) {
+      throw new Error('profileData is required');
+    }
+
+    const candidate = await this.getCandidate(profile.candidateId);
+    if (!candidate) {
+      throw new Error(`Candidate ${profile.candidateId} not found`);
+    }
+
+    const existingProfiles = Array.from(this.candidateProfiles.values())
+      .filter(p => p.candidateId === profile.candidateId);
+
+    const maxVersion = existingProfiles.length > 0
+      ? Math.max(...existingProfiles.map(p => p.version))
+      : 0;
+
+    const nextVersion = maxVersion + 1;
+
+    const versionExists = existingProfiles.some(p => p.version === nextVersion);
+    if (versionExists) {
+      throw new Error(`Version ${nextVersion} already exists for candidate ${profile.candidateId}`);
+    }
+
+    const newProfile: CandidateProfile = {
+      id: randomUUID(),
+      ...profile,
+      version: nextVersion,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    this.candidateProfiles.set(newProfile.id, newProfile);
+    console.log(`Created candidate profile version ${nextVersion} for candidate ${profile.candidateId}`);
+    return newProfile;
+  }
+
+  async getCandidateProfiles(candidateId: string): Promise<CandidateProfile[]> {
+    if (!candidateId) {
+      throw new Error('candidateId is required');
+    }
+
+    return Array.from(this.candidateProfiles.values())
+      .filter(profile => profile.candidateId === candidateId)
+      .sort((a, b) => b.version - a.version);
+  }
+
+  async getLatestCandidateProfile(candidateId: string): Promise<CandidateProfile | undefined> {
+    if (!candidateId) {
+      throw new Error('candidateId is required');
+    }
+
+    const profiles = Array.from(this.candidateProfiles.values())
+      .filter(profile => profile.candidateId === candidateId);
+
+    if (profiles.length === 0) return undefined;
+
+    return profiles.reduce((latest, current) =>
+      current.version > latest.version ? current : latest
+    );
+  }
+
+  async getCandidateProfileByVersion(candidateId: string, version: number): Promise<CandidateProfile | undefined> {
+    if (!candidateId) {
+      throw new Error('candidateId is required');
+    }
+
+    if (!Number.isInteger(version) || version < 1) {
+      throw new Error('version must be a positive integer');
+    }
+
+    return Array.from(this.candidateProfiles.values())
+      .find(profile => profile.candidateId === candidateId && profile.version === version);
+  }
+
   // Additional user methods
   async getUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+
+  // Interview Preparations
+  async createInterviewPreparation(preparation: InsertInterviewPreparation): Promise<InterviewPreparation> {
+    const id = randomUUID();
+    const now = new Date();
+    const newPreparation: InterviewPreparation = {
+      id,
+      ...preparation,
+      viewedAt: null,
+      feedbackRating: null,
+      feedbackComment: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.interviewPreparations.set(id, newPreparation);
+    return newPreparation;
+  }
+
+  async getInterviewPreparation(interviewId: string): Promise<InterviewPreparation | undefined> {
+    return Array.from(this.interviewPreparations.values())
+      .find(prep => prep.interviewId === interviewId);
+  }
+
+  async updateInterviewPreparation(id: string, updates: Partial<InterviewPreparation>): Promise<InterviewPreparation | undefined> {
+    const preparation = this.interviewPreparations.get(id);
+    if (!preparation) return undefined;
+
+    const updated = {
+      ...preparation,
+      ...updates,
+      updatedAt: new Date(),
+    };
+
+    this.interviewPreparations.set(id, updated);
+    return updated;
+  }
+
+  // Hiring Decision methods
+  async createHiringDecision(decision: InsertHiringDecision): Promise<HiringDecision> {
+    const id = randomUUID();
+    const now = new Date();
+    const newDecision: HiringDecision = {
+      id,
+      ...decision,
+      decidedBy: decision.decidedBy ?? null,
+      decidedAt: decision.decidedAt ?? null,
+      status: decision.status ?? "draft",
+      viewedAt: null,
+      feedbackRating: null,
+      feedbackComment: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.hiringDecisions.set(id, newDecision);
+    return newDecision;
+  }
+
+  async getHiringDecision(candidateId: string, jobId: string): Promise<HiringDecision | undefined> {
+    return Array.from(this.hiringDecisions.values())
+      .find(d => d.candidateId === candidateId && d.jobId === jobId);
+  }
+
+  async getHiringDecisionById(id: string): Promise<HiringDecision | undefined> {
+    return this.hiringDecisions.get(id);
+  }
+
+  async getHiringDecisionsByJob(jobId: string): Promise<HiringDecision[]> {
+    return Array.from(this.hiringDecisions.values())
+      .filter(d => d.jobId === jobId);
+  }
+
+  async updateHiringDecision(id: string, updates: Partial<HiringDecision>): Promise<HiringDecision | undefined> {
+    const decision = this.hiringDecisions.get(id);
+    if (!decision) return undefined;
+
+    const updated = {
+      ...decision,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.hiringDecisions.set(id, updated);
+    return updated;
+  }
+
+  async getInterviewsByCandidate(candidateId: string): Promise<Interview[]> {
+    return Array.from(this.interviews.values())
+      .filter(i => i.candidateId === candidateId);
+  }
+
+  async getCandidatesForJob(jobId: string): Promise<Candidate[]> {
+    // Get all candidates that have applied for this job
+    const jobMatchesForJob = Array.from(this.jobMatches.values())
+      .filter(match => match.jobId === jobId);
+
+    const candidateIds = jobMatchesForJob.map(match => match.candidateId);
+    return Array.from(this.candidates.values())
+      .filter(c => candidateIds.includes(c.id));
   }
 }
 

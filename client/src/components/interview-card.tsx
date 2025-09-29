@@ -1,24 +1,27 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Calendar, 
-  Clock, 
-  Video, 
-  Phone, 
+import {
+  Calendar,
+  Clock,
+  Video,
+  Phone,
   MapPin,
   User,
   Building,
   Edit,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from "lucide-react";
 import { type Interview } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { retryFetchJSON } from "@/lib/retry-fetch";
+import { getUserFriendlyErrorMessage } from "@/lib/error-handling";
+import { useLocation } from "wouter";
 
 interface InterviewCardProps {
   interview: Interview;
@@ -26,6 +29,7 @@ interface InterviewCardProps {
 
 export function InterviewCard({ interview }: InterviewCardProps) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   // Fetch candidate and job details
   const { data: candidate } = useQuery<any>({
@@ -40,8 +44,14 @@ export function InterviewCard({ interview }: InterviewCardProps) {
 
   const updateInterviewMutation = useMutation({
     mutationFn: async (data: Partial<Interview>) => {
-      const response = await apiRequest("PUT", `/api/interviews/${interview.id}`, data);
-      return response.json();
+      return retryFetchJSON(`/api/interviews/${interview.id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }, {
+        maxRetries: 3,
+        retryDelay: 1000,
+        exponentialBackoff: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/interviews"] });
@@ -50,10 +60,10 @@ export function InterviewCard({ interview }: InterviewCardProps) {
         description: "Interview has been updated successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update interview.",
+        description: getUserFriendlyErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -276,8 +286,20 @@ export function InterviewCard({ interview }: InterviewCardProps) {
             </Button>
           )}
 
-          <Button 
-            size="sm" 
+          {interview.status === "scheduled" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/interview-prepare/${interview.id}`)}
+              data-testid={`button-prepare-${interview.id}`}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              准备材料
+            </Button>
+          )}
+
+          <Button
+            size="sm"
             className="flex-1"
             data-testid={`button-view-${interview.id}`}
           >
