@@ -21,9 +21,7 @@ import type {
   InterviewReport,
   InterviewTemplate
 } from "@shared/types/interview-assistant";
-import { db } from "../storage";
-import { candidates, jobs, interviews, candidateProfiles } from "@shared/schema";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { storage } from "../storage";
 import { v4 as uuidv4 } from 'uuid';
 
 export class InterviewAssistantService {
@@ -658,27 +656,18 @@ export class InterviewAssistantService {
    * 辅助方法
    */
   private async getCandidateInfo(candidateId: string): Promise<any> {
-    const result = await db.select()
-      .from(candidates)
-      .where(eq(candidates.id, candidateId))
-      .limit(1);
-    return result[0];
+    return await storage.getCandidate(candidateId);
   }
 
   private async getJobInfo(jobId: string): Promise<any> {
-    const result = await db.select()
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-    return result[0];
+    return await storage.getJob(jobId);
   }
 
   private async getCandidateProfile(candidateId: string): Promise<any> {
-    const result = await db.select()
-      .from(candidateProfiles)
-      .where(eq(candidateProfiles.candidateId, candidateId))
-      .orderBy(desc(candidateProfiles.version))
-      .limit(1);
+    const profiles = await storage.getCandidateProfiles(candidateId);
+    if (profiles.length === 0) return null;
+    const sortedProfiles = profiles.sort((a, b) => (b.version || 0) - (a.version || 0));
+    return sortedProfiles[0];
     return result[0];
   }
 

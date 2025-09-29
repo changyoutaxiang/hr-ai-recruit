@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Card,
@@ -50,7 +50,7 @@ interface PreparationWithDetails extends InterviewPreparation {
 
 export default function InterviewPreparePage() {
   const { id: interviewId } = useParams();
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
 

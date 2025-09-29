@@ -935,10 +935,6 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async getInterviewsByCandidate(candidateId: string): Promise<Interview[]> {
-    return Array.from(this.interviews.values())
-      .filter(i => i.candidateId === candidateId);
-  }
 
   async getCandidatesForJob(jobId: string): Promise<Candidate[]> {
     // Get all candidates that have applied for this job

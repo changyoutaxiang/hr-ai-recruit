@@ -3,10 +3,8 @@
  * 负责处理面试反馈并触发候选人画像更新
  */
 
-import { db } from "../db";
-import { interviews, candidateProfiles } from "@shared/schema";
+import { storage } from "../storage";
 import type { Interview, CandidateProfile, ProfileData } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
 import { CandidateProfileService } from "./candidateProfileService";
 import { OrganizationalFitService } from "./organizationalFitService";
 import { openai } from "./openaiService";
@@ -135,31 +133,27 @@ export class InterviewFeedbackService {
    * 保存面试反馈
    */
   private async saveFeedback(feedback: InterviewFeedback): Promise<void> {
-    await db.update(interviews)
-      .set({
-        feedback: JSON.stringify(feedback.observations),
-        rating: feedback.scores.overall,
-        notes: feedback.additionalNotes,
-        updatedAt: new Date()
-      })
-      .where(eq(interviews.id, feedback.interviewId));
+    await storage.updateInterview(feedback.interviewId, {
+      feedback: JSON.stringify(feedback.observations),
+      rating: feedback.scores.overall,
+      notes: feedback.additionalNotes,
+      updatedAt: new Date()
+    });
   }
 
   /**
    * 获取最新画像
    */
   private async getLatestProfile(candidateId: string): Promise<CandidateProfile> {
-    const profiles = await db.select()
-      .from(candidateProfiles)
-      .where(eq(candidateProfiles.candidateId, candidateId))
-      .orderBy(desc(candidateProfiles.version))
-      .limit(1);
+    const profiles = await storage.getCandidateProfiles(candidateId);
 
     if (profiles.length === 0) {
       throw new Error('No profile found for candidate');
     }
 
-    return profiles[0];
+    // 按版本号排序，获取最新的
+    const sortedProfiles = profiles.sort((a, b) => (b.version || 0) - (a.version || 0));
+    return sortedProfiles[0];
   }
 
   /**
@@ -170,16 +164,11 @@ export class InterviewFeedbackService {
     round: number,
     type: InterviewType
   ): Promise<InterviewFeedback[]> {
-    const roundInterviews = await db.select()
-      .from(interviews)
-      .where(
-        and(
-          eq(interviews.candidateId, candidateId),
-          eq(interviews.round, round)
-        )
-      );
+    const roundInterviews = await storage.getInterviewsByCandidate(candidateId);
 
-    return roundInterviews
+    const roundFilteredInterviews = roundInterviews.filter(i => i.round === round);
+
+    return roundFilteredInterviews
       .filter(i => i.feedback)
       .map(i => JSON.parse(i.feedback as string) as InterviewFeedback);
   }
@@ -273,9 +262,7 @@ Return the updated ProfileData JSON that incorporates all feedback while maintai
       updatedAt: new Date()
     };
 
-    const [created] = await db.insert(candidateProfiles)
-      .values(newProfile)
-      .returning();
+    const created = await storage.createCandidateProfile(newProfile);
 
     return created;
   }
@@ -358,12 +345,10 @@ Return as JSON with keys: overallScore, strengths (array), concerns (array), gap
     }
 
     // 保存更新
-    await db.update(candidateProfiles)
-      .set({
-        profileData: profileData,
-        updatedAt: new Date()
-      })
-      .where(eq(candidateProfiles.id, profile.id));
+    await storage.updateCandidateProfile(profile.id, {
+      profileData: profileData,
+      updatedAt: new Date()
+    });
   }
 
   /**
@@ -373,15 +358,10 @@ Return as JSON with keys: overallScore, strengths (array), concerns (array), gap
     candidateId: string,
     jobId: string
   ): Promise<CandidateInterviewProcess> {
-    const profiles = await db.select()
-      .from(candidateProfiles)
-      .where(
-        and(
-          eq(candidateProfiles.candidateId, candidateId),
-          eq(candidateProfiles.jobId, jobId)
-        )
-      )
-      .orderBy(candidateProfiles.version);
+    const allProfiles = await storage.getCandidateProfiles(candidateId);
+    const profiles = allProfiles
+      .filter(p => p.jobId === jobId)
+      .sort((a, b) => (a.version || 0) - (b.version || 0));
 
     const completedStages: ProfileEvolutionStage[] = profiles.map(p => ({
       stageId: p.stage,
