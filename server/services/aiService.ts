@@ -58,6 +58,24 @@ export interface MatchResultWithUsage {
   model: string;
 }
 
+export interface InterviewQuestionsResult {
+  questions: string[];
+  usage: TokenUsage;
+  model: string;
+}
+
+export interface StructuredResponseResult {
+  data: any;
+  usage: TokenUsage;
+  model: string;
+}
+
+export interface TextResponseResult {
+  text: string;
+  usage: TokenUsage;
+  model: string;
+}
+
 export class AIService {
   async analyzeResume(resumeText: string): Promise<ResumeAnalysisResult> {
     try {
@@ -198,10 +216,11 @@ Important:
     }
   }
 
-  async generateInterviewQuestions(jobTitle: string, requirements: string[]): Promise<string[]> {
+  async generateInterviewQuestions(jobTitle: string, requirements: string[]): Promise<InterviewQuestionsResult> {
     try {
+      const model = MODELS.DEFAULT;
       const response = await openai.chat.completions.create({
-        model: MODELS.DEFAULT,
+        model,
         messages: [
           {
             role: "system",
@@ -227,7 +246,19 @@ Important:
       }
 
       const result = JSON.parse(content) as { questions: string[] };
-      return result.questions;
+
+      // Extract token usage
+      const usage: TokenUsage = {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      };
+
+      return {
+        questions: result.questions,
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error generating interview questions:", error);
       throw new Error("Failed to generate questions: " + (error instanceof Error ? error.message : "Unknown error"));
@@ -286,10 +317,11 @@ Important:
   /**
    * 生成结构化响应（返回 JSON）
    */
-  async generateStructuredResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<any> {
+  async generateStructuredResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<StructuredResponseResult> {
     try {
+      const model = MODELS[modelType];
       const response = await openai.chat.completions.create({
-        model: MODELS[modelType],
+        model,
         messages: [
           {
             role: "system",
@@ -309,21 +341,37 @@ Important:
         throw new Error("No response from AI");
       }
 
-      return JSON.parse(content);
+      // Extract token usage
+      const usage: TokenUsage = {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      };
+
+      return {
+        data: JSON.parse(content),
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error generating structured response:", error);
-      // 返回空对象而不是抛出错误，让调用方使用默认值
-      return {};
+      // 返回空对象和零 token，让调用方使用默认值
+      return {
+        data: {},
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        model: MODELS[modelType],
+      };
     }
   }
 
   /**
    * 生成文本响应
    */
-  async generateTextResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<string> {
+  async generateTextResponse(prompt: string, modelType: keyof typeof MODELS = "DEFAULT"): Promise<TextResponseResult> {
     try {
+      const model = MODELS[modelType];
       const response = await openai.chat.completions.create({
-        model: MODELS[modelType],
+        model,
         messages: [
           {
             role: "system",
@@ -338,10 +386,25 @@ Important:
         max_tokens: 500
       });
 
-      return response.choices[0]?.message?.content || "";
+      // Extract token usage
+      const usage: TokenUsage = {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      };
+
+      return {
+        text: response.choices[0]?.message?.content || "",
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error generating text response:", error);
-      return "";
+      return {
+        text: "",
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        model: MODELS[modelType],
+      };
     }
   }
 }

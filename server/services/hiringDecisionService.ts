@@ -457,7 +457,20 @@ ${interviewFeedback || '暂无面试反馈'}
   }
 }`;
 
-    const aiResponse = await aiService.generateStructuredResponse(prompt, "MATCHING");
+    const result = await aiService.generateStructuredResponse(prompt, "MATCHING");
+    const aiResponse = result.data;
+
+    // Record token usage (no await to avoid blocking)
+    storage.createAiConversation({
+      userId: "system",
+      sessionId: `hiring-analysis-${candidateId}`,
+      message: `Analyze candidate strengths and weaknesses for hiring decision`,
+      response: JSON.stringify(aiResponse),
+      modelUsed: result.model,
+      tokensUsed: result.usage.totalTokens,
+    }).catch(error => {
+      console.error('[Token Tracking] Failed to record hiring analysis token usage:', error);
+    });
 
     // 合并 AI 分析和基础分析
     return {
@@ -876,8 +889,21 @@ ${analysis.weaknesses.slice(0, 3).map((w, i) => `${i + 1}. ${w}`).join('\n')}
 
 直接返回推荐文本，不要其他内容。`;
 
-      const aiRecommendation = await aiService.generateTextResponse(prompt, "MATCHING");
-      return aiRecommendation || basicText;
+      const result = await aiService.generateTextResponse(prompt, "MATCHING");
+
+      // Record token usage (no await to avoid blocking)
+      storage.createAiConversation({
+        userId: "system",
+        sessionId: `hiring-recommendation-${candidate.id}`,
+        message: `Generate hiring recommendation for ${candidate.name} - ${job.title}`,
+        response: result.text,
+        modelUsed: result.model,
+        tokensUsed: result.usage.totalTokens,
+      }).catch(error => {
+        console.error('[Token Tracking] Failed to record hiring recommendation token usage:', error);
+      });
+
+      return result.text || basicText;
     } catch (error) {
       console.error("Failed to generate AI recommendation:", error);
       return basicText;

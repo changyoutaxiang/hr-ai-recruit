@@ -1934,13 +1934,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/ai/generate-questions", async (req, res) => {
     try {
       const { jobTitle, requirements, experienceLevel } = req.body;
-      
+
       if (!jobTitle || !requirements) {
         return res.status(400).json({ error: "Job title and requirements are required" });
       }
 
-      const questions = await aiService.generateInterviewQuestions(jobTitle, requirements);
-      res.json({ questions });
+      const result = await aiService.generateInterviewQuestions(jobTitle, requirements);
+
+      // Record token usage
+      try {
+        await storage.createAiConversation({
+          userId: "system",
+          sessionId: `generate-questions-${jobTitle.replace(/\s+/g, '-')}`,
+          message: `Generate interview questions for ${jobTitle}`,
+          response: JSON.stringify(result.questions),
+          modelUsed: result.model,
+          tokensUsed: result.usage.totalTokens,
+        });
+      } catch (tokenError) {
+        console.error('[Token Tracking] Failed to record question generation token usage:', tokenError);
+      }
+
+      res.json({ questions: result.questions });
     } catch (error) {
       console.error("Error generating questions:", error);
       res.status(500).json({ error: "Failed to generate interview questions" });

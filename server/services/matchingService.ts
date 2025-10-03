@@ -1,5 +1,6 @@
 import { type Candidate, type Job } from "@shared/schema";
 import { aiService } from "./aiService";
+import { storage } from "../storage";
 
 export interface CandidateMatch {
   candidate: Candidate;
@@ -27,6 +28,18 @@ export class MatchingService {
             description: job.description,
           }
         );
+
+        // Record token usage (non-blocking)
+        storage.createAiConversation({
+          userId: "system",
+          sessionId: `batch-match-${job.id}`,
+          message: `Match candidate ${candidate.name} to job ${job.title}`,
+          response: JSON.stringify(matchResult.match),
+          modelUsed: matchResult.model,
+          tokensUsed: matchResult.usage.totalTokens,
+        }).catch(error => {
+          console.error('[Token Tracking] Failed to record batch matching token usage:', error);
+        });
 
         // Extract match object from result (matchResult contains { match, usage, model })
         matches.push({
@@ -63,6 +76,18 @@ export class MatchingService {
             description: job.description,
           }
         );
+
+        // Record token usage (non-blocking)
+        storage.createAiConversation({
+          userId: "system",
+          sessionId: `find-jobs-${candidate.id}`,
+          message: `Match job ${job.title} to candidate ${candidate.name}`,
+          response: JSON.stringify(matchResult.match),
+          modelUsed: matchResult.model,
+          tokensUsed: matchResult.usage.totalTokens,
+        }).catch(error => {
+          console.error('[Token Tracking] Failed to record job matching token usage:', error);
+        });
 
         // Extract match object from result (matchResult contains { match, usage, model })
         matches.push({
