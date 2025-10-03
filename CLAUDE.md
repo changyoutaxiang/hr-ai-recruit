@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 项目信息
+
+**GitHub 仓库**: https://github.com/changyoutaxiang/hr-ai-recruit.git
+
 ## 项目概述
 
 这是一个全栈的 HR 招聘管理系统，支持候选人管理、职位发布、面试安排、AI 简历分析和智能匹配功能。系统内置了 AI 助手用于招聘指导，并提供可定制的提示词模板系统。
@@ -90,7 +94,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 环境要求
 
-必需的环境变量:
-- `DATABASE_URL` - Neon PostgreSQL 连接字符串
-- OpenAI API key (用于 AI 功能)
-- Google Cloud Storage 凭据 (用于文件存储)
+### 必需的环境变量
+
+**Supabase 配置**:
+- `SUPABASE_URL` - Supabase 项目 URL
+- `SUPABASE_ANON_KEY` - Supabase 匿名密钥（用于客户端）
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase 服务角色密钥（用于服务端，完全访问权限）
+- `VITE_SUPABASE_URL` - 前端 Supabase URL（需要 VITE_ 前缀）
+- `VITE_SUPABASE_ANON_KEY` - 前端 Supabase 匿名密钥
+- `DATABASE_URL` - PostgreSQL 连接字符串（用于 Drizzle ORM）
+
+**AI 配置**:
+- `OPENROUTER_API_KEY` - OpenRouter API 密钥（支持多个 AI 模型）
+- `AI_MODEL` - 默认 AI 模型（如 `google/gemini-2.5-flash`）
+
+**可选配置**:
+- `RESUME_AI_MODEL` - 简历分析专用模型（推荐 `openai/gpt-5`）
+- `PROFILE_AI_MODEL` - 候选人画像生成模型
+- `MATCHING_AI_MODEL` - 职位匹配模型
+- `CHAT_AI_MODEL` - 聊天助手模型
+- `VISION_AI_MODEL` - 视觉分析模型（PDF 多模态解析）
+- `ENABLE_VISION_PARSING` - 启用视觉解析（默认 true）
+- `NODE_ENV` - 运行环境（development/production）
+- `SESSION_SECRET` - Session 密钥（生产环境必须修改）
+
+### 安全注意事项
+
+⚠️ **绝不要提交 `.env` 文件到 Git！**
+- `.env` 文件已添加到 `.gitignore`
+- 仅提交 `.env.example` 模板文件
+- 所有敏感信息（API 密钥、数据库密码）仅存储在本地 `.env` 中
+- 定期轮换 API 密钥和数据库凭据
