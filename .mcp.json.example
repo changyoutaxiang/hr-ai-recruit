@@ -1,0 +1,40 @@
+{
+  "$schema": "https://github.com/modelcontextprotocol/specification/blob/main/schema/mcp.json",
+  "_instructions": {
+    "_comment": "这是 MCP 配置模板文件，请按以下步骤配置",
+    "step1": "复制此文件为 .mcp.json: cp .mcp.json.example .mcp.json",
+    "step2": "替换 mcpServers 中的占位符（YOUR_SUPABASE_URL 等）",
+    "step3": "删除此 _instructions 字段",
+    "step4": "重启 Claude Code 使配置生效",
+    "security": "⚠️ 确认 .mcp.json 未被 Git 跟踪（git status 不应显示它）",
+    "docs": "详细说明请参考 CLAUDE.md → MCP 配置章节"
+  },
+  "mcpServers": {
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-postgrest@latest",
+        "--apiUrl",
+        "YOUR_SUPABASE_URL/rest/v1",
+        "--apiKey",
+        "YOUR_SUPABASE_SERVICE_ROLE_KEY",
+        "--schema",
+        "public"
+      ],
+      "description": "Supabase PostgREST MCP 服务器 - 提供数据库 CRUD 操作能力",
+      "env": {}
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest",
+        "--api-key",
+        "YOUR_CONTEXT7_API_KEY"
+      ],
+      "description": "Context7 MCP 服务器 - 智能代码索引和上下文管理",
+      "env": {}
+    }
+  }
+}
