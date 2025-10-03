@@ -23,9 +23,23 @@ import { requireAuth, requireRole, type AuthRequest } from "./middleware/auth";
 import multer from "multer";
 
 // Configure multer for file uploads
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    // 只允许 PDF、DOC 和 DOCX 文件
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, and DOCX files are allowed.'));
+    }
+  }
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -51,20 +65,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/users", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { id, email, fullName, role } = req.body;
+      const { email, name, role, password } = req.body;
 
-      // 防止越权创建：用户只能创建自己的记录，且必须匹配 JWT 中的用户 ID
-      if (id !== req.user?.id) {
-        return res.status(403).json({ error: "Forbidden: Cannot create user for different ID" });
+      // 验证必需字段
+      if (!email || !name || !password) {
+        return res.status(400).json({ error: "Email, name, and password are required" });
+      }
+
+      // 防止越权创建：只有管理员可以创建用户
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden: Only administrators can create users" });
       }
 
       const user = await storage.createUser({
-        id,
         email,
-        fullName: fullName || null,
-        role: role || 'recruiter',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        name,
+        password, // 注意：实际生产环境中应该先进行密码哈希
+        role: role || 'hr_manager'
       });
       res.status(201).json(user);
     } catch (error) {
@@ -74,7 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Object storage routes
-  app.post("/api/objects/upload", async (req, res) => {
+  app.post("/api/objects/upload", requireAuth, async (req: AuthRequest, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
@@ -86,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Prompt template routes
-  app.get("/api/prompt-templates", async (req, res) => {
+  app.get("/api/prompt-templates", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { category } = req.query;
       
@@ -104,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/prompt-templates/:id", async (req, res) => {
+  app.get("/api/prompt-templates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const template = await promptTemplateService.getTemplate(req.params.id);
       if (!template) {
@@ -117,7 +134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/prompt-templates", async (req, res) => {
+  app.post("/api/prompt-templates", requireAuth, async (req: AuthRequest, res) => {
     try {
       const template = await promptTemplateService.createTemplate(req.body);
       res.status(201).json(template);
@@ -127,7 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/prompt-templates/:id", async (req, res) => {
+  app.put("/api/prompt-templates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const template = await promptTemplateService.updateTemplate(req.params.id, req.body);
       if (!template) {
@@ -140,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/prompt-templates/:id", async (req, res) => {
+  app.delete("/api/prompt-templates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const deleted = await promptTemplateService.deleteTemplate(req.params.id);
       if (!deleted) {
@@ -154,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard metrics
-  app.get("/api/dashboard/metrics", async (req, res) => {
+  app.get("/api/dashboard/metrics", requireAuth, async (req: AuthRequest, res) => {
     try {
       const [candidates, jobs, interviews] = await Promise.all([
         storage.getCandidates(),
@@ -197,7 +214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI Token usage statistics
-  app.get("/api/ai/token-usage", async (req, res) => {
+  app.get("/api/ai/token-usage", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { startDate, endDate, userId, model } = req.query;
 
@@ -288,7 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Jobs routes
-  app.get("/api/jobs", async (req, res) => {
+  app.get("/api/jobs", requireAuth, async (req: AuthRequest, res) => {
     try {
       const jobs = await storage.getJobs();
       res.json(jobs);
@@ -297,7 +314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/jobs/:id", async (req, res) => {
+  app.get("/api/jobs/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const job = await storage.getJob(req.params.id);
       if (!job) {
@@ -309,7 +326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/jobs", async (req, res) => {
+  app.post("/api/jobs", requireAuth, async (req: AuthRequest, res) => {
     try {
       const jobData = insertJobSchema.parse(req.body);
       const job = await storage.createJob(jobData);
@@ -319,7 +336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/jobs/:id", async (req, res) => {
+  app.put("/api/jobs/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const job = await storage.updateJob(req.params.id, req.body);
       if (!job) {
@@ -331,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/jobs/:id", async (req, res) => {
+  app.delete("/api/jobs/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const deleted = await storage.deleteJob(req.params.id);
       if (!deleted) {
@@ -343,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/jobs/:id/find-matches", async (req, res) => {
+  app.post("/api/jobs/:id/find-matches", requireAuth, async (req: AuthRequest, res) => {
     try {
       const job = await storage.getJob(req.params.id);
       if (!job) {
@@ -370,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/jobs/:id/matches", async (req, res) => {
+  app.get("/api/jobs/:id/matches", requireAuth, async (req: AuthRequest, res) => {
     try {
       const matches = await storage.getJobMatchesForJob(req.params.id);
 
@@ -396,7 +413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Candidates routes
-  app.get("/api/candidates", async (req, res) => {
+  app.get("/api/candidates", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { search } = req.query;
       let candidates;
@@ -413,7 +430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/candidates/:id", async (req, res) => {
+  app.get("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const candidate = await storage.getCandidate(req.params.id);
       if (!candidate) {
@@ -425,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/candidates", async (req, res) => {
+  app.post("/api/candidates", requireAuth, async (req: AuthRequest, res) => {
     try {
       const candidateData = insertCandidateSchema.parse(req.body);
       const candidate = await storage.createCandidate(candidateData);
@@ -435,7 +452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/candidates/:id", async (req, res) => {
+  app.put("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const candidate = await storage.updateCandidate(req.params.id, req.body);
       if (!candidate) {
@@ -447,7 +464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/candidates/:id", async (req, res) => {
+  app.delete("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const deleted = await storage.deleteCandidate(req.params.id);
       if (!deleted) {
@@ -459,7 +476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/candidates/:id/find-matches", async (req, res) => {
+  app.post("/api/candidates/:id/find-matches", requireAuth, async (req: AuthRequest, res) => {
     try {
       const candidate = await storage.getCandidate(req.params.id);
       if (!candidate) {
@@ -528,7 +545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/candidates/:id/matches", async (req, res) => {
+  app.get("/api/candidates/:id/matches", requireAuth, async (req: AuthRequest, res) => {
     try {
       const matches = await storage.getJobMatchesForCandidate(req.params.id);
 
@@ -554,7 +571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Resume upload and parsing
-  app.post("/api/candidates/:id/resume", upload.single("resume"), async (req, res) => {
+  app.post("/api/candidates/:id/resume", requireAuth, upload.single("resume"), async (req: AuthRequest, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -777,7 +794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 针对特定岗位的简历深度分析
-  app.post("/api/candidates/:id/targeted-analysis", upload.single("resume"), async (req, res) => {
+  app.post("/api/candidates/:id/targeted-analysis", requireAuth, upload.single("resume"), async (req: AuthRequest, res) => {
     try {
       const { jobId } = req.body;
 
@@ -869,7 +886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/candidates/:id/profiles", async (req, res) => {
+  app.get("/api/candidates/:id/profiles", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
 
@@ -886,7 +903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/candidates/:id/profiles/latest", async (req, res) => {
+  app.get("/api/candidates/:id/profiles/latest", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
 
@@ -906,7 +923,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/candidates/:id/profiles/:version", async (req, res) => {
+  app.get("/api/candidates/:id/profiles/:version", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id, version: versionParam } = req.params;
 
@@ -931,7 +948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/candidates/:id/profiles/build", async (req, res) => {
+  app.post("/api/candidates/:id/profiles/build", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
 
@@ -988,7 +1005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/candidates/:candidateId/profiles/update-from-interview/:interviewId", async (req, res) => {
+  app.post("/api/candidates/:candidateId/profiles/update-from-interview/:interviewId", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId, interviewId } = req.params;
 
@@ -1025,7 +1042,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 组织契合度评估 API
-  app.post("/api/candidates/:candidateId/organizational-fit", async (req, res) => {
+  app.post("/api/candidates/:candidateId/organizational-fit", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId } = req.params;
       const { stage = "resume", jobId } = req.body;
@@ -1075,7 +1092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 获取组织契合度演化报告
-  app.get("/api/candidates/:candidateId/organizational-fit/evolution", async (req, res) => {
+  app.get("/api/candidates/:candidateId/organizational-fit/evolution", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId } = req.params;
 
@@ -1120,7 +1137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 公司配置 API
-  app.get("/api/company/config", async (req, res) => {
+  app.get("/api/company/config", requireAuth, async (req: AuthRequest, res) => {
     try {
       const config = await companyConfigService.getCurrentConfig();
       res.json(config);
@@ -1133,7 +1150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/company/config", async (req, res) => {
+  app.put("/api/company/config", requireAuth, async (req: AuthRequest, res) => {
     try {
       const updatedConfig = await companyConfigService.updateConfig(req.body);
       res.json(updatedConfig);
@@ -1146,7 +1163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/company/config/culture-values", async (req, res) => {
+  app.get("/api/company/config/culture-values", requireAuth, async (req: AuthRequest, res) => {
     try {
       const values = await companyConfigService.getCultureValues();
       res.json(values);
@@ -1159,7 +1176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/company/config/leadership-dimensions", async (req, res) => {
+  app.get("/api/company/config/leadership-dimensions", requireAuth, async (req: AuthRequest, res) => {
     try {
       const dimensions = await companyConfigService.getLeadershipDimensions();
       res.json(dimensions);
@@ -1172,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/company/config/interview-questions/:stage", async (req, res) => {
+  app.get("/api/company/config/interview-questions/:stage", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { stage } = req.params;
       const questions = await companyConfigService.generateInterviewQuestions(
@@ -1189,7 +1206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Interview feedback and profile update
-  app.post("/api/interviews/:id/feedback", async (req, res) => {
+  app.post("/api/interviews/:id/feedback", requireAuth, async (req: AuthRequest, res) => {
     try {
       const interviewId = req.params.id;
       const feedback = req.body;
@@ -1227,7 +1244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 获取候选人的面试进程
-  app.get("/api/candidates/:candidateId/interview-process", async (req, res) => {
+  app.get("/api/candidates/:candidateId/interview-process", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId } = req.params;
       const { jobId } = req.query;
@@ -1253,7 +1270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI-powered candidate matching
-  app.post("/api/jobs/:jobId/match-candidates", async (req, res) => {
+  app.post("/api/jobs/:jobId/match-candidates", requireAuth, async (req: AuthRequest, res) => {
     try {
       const job = await storage.getJob(req.params.jobId);
       if (!job) {
@@ -1271,7 +1288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced candidate matching with specific scores
-  app.post("/api/candidates/:candidateId/calculate-match", async (req, res) => {
+  app.post("/api/candidates/:candidateId/calculate-match", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { jobId } = req.body;
       
@@ -1348,7 +1365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Interviews routes
-  app.get("/api/interviews", async (req, res) => {
+  app.get("/api/interviews", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId, jobId } = req.query;
       
@@ -1367,7 +1384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/interviews/:id", async (req, res) => {
+  app.get("/api/interviews/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const interview = await storage.getInterview(req.params.id);
       if (!interview) {
@@ -1379,7 +1396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/interviews", async (req, res) => {
+  app.post("/api/interviews", requireAuth, async (req: AuthRequest, res) => {
     try {
       const interviewData = insertInterviewSchema.parse(req.body);
       const interview = await storage.createInterview(interviewData);
@@ -1410,7 +1427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/interviews/:id", async (req, res) => {
+  app.put("/api/interviews/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const existingInterview = await storage.getInterview(req.params.id);
       if (!existingInterview) {
@@ -1470,7 +1487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Cancel interview endpoint
-  app.post("/api/interviews/:id/cancel", async (req, res) => {
+  app.post("/api/interviews/:id/cancel", requireAuth, async (req: AuthRequest, res) => {
     try {
       const existingInterview = await storage.getInterview(req.params.id);
       if (!existingInterview) {
@@ -1498,7 +1515,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Interview Preparation routes
-  app.post("/api/interviews/:interviewId/preparation", async (req, res) => {
+  app.post("/api/interviews/:interviewId/preparation", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewId } = req.params;
       const { candidateId, interviewerId } = req.body;
@@ -1532,7 +1549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/interviews/:interviewId/preparation", async (req, res) => {
+  app.get("/api/interviews/:interviewId/preparation", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewId } = req.params;
 
@@ -1555,7 +1572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/interviews/:interviewId/preparation/feedback", async (req, res) => {
+  app.post("/api/interviews/:interviewId/preparation/feedback", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewId } = req.params;
       const { rating, comment } = req.body;
@@ -1584,7 +1601,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Interview Transcription API
-  app.post("/api/interviews/transcribe", async (req, res) => {
+  app.post("/api/interviews/transcribe", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewId } = req.body;
       const audioFile = req.file; // 需要配置multer中间件
@@ -1637,7 +1654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Interview AI Analysis API
-  app.post("/api/interviews/ai-analyze", async (req, res) => {
+  app.post("/api/interviews/ai-analyze", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewId, content, candidateInfo } = req.body;
 
@@ -1708,7 +1725,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Hiring Decision routes
-  app.post("/api/hiring-decisions", async (req, res) => {
+  app.post("/api/hiring-decisions", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId, jobId } = req.body;
 
@@ -1755,7 +1772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/hiring-decisions/:candidateId/:jobId", async (req, res) => {
+  app.get("/api/hiring-decisions/:candidateId/:jobId", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { candidateId, jobId } = req.params;
       const decision = await storage.getHiringDecision(candidateId, jobId);
@@ -1778,7 +1795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/hiring-decisions/:id", async (req, res) => {
+  app.put("/api/hiring-decisions/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -1797,7 +1814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/hiring-decisions/:id/feedback", async (req, res) => {
+  app.post("/api/hiring-decisions/:id/feedback", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
       const { rating, comment } = req.body;
@@ -1825,7 +1842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/hiring-decisions/:id/finalize", async (req, res) => {
+  app.post("/api/hiring-decisions/:id/finalize", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id } = req.params;
       const { decidedBy } = req.body;
@@ -1850,7 +1867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all hiring decisions for a specific job
-  app.get("/api/hiring-decisions/job/:jobId", async (req, res) => {
+  app.get("/api/hiring-decisions/job/:jobId", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { jobId } = req.params;
 
@@ -1885,7 +1902,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI Assistant routes
-  app.post("/api/ai/chat", async (req, res) => {
+  app.post("/api/ai/chat", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { message, sessionId, context, templateId } = req.body;
       
@@ -1931,7 +1948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/generate-questions", async (req, res) => {
+  app.post("/api/ai/generate-questions", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { jobTitle, requirements, experienceLevel } = req.body;
 
@@ -1963,7 +1980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bulk operations
-  app.post("/api/candidates/bulk-match", async (req, res) => {
+  app.post("/api/candidates/bulk-match", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { jobId, candidateIds } = req.body;
       
@@ -2047,7 +2064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get conversation history
-  app.get("/api/ai/conversations/:sessionId", async (req, res) => {
+  app.get("/api/ai/conversations/:sessionId", requireAuth, async (req: AuthRequest, res) => {
     try {
       const conversations = await storage.getAiConversationsBySession(req.params.sessionId);
       res.json(conversations);
@@ -2060,7 +2077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Collaboration routes
   
   // Activity logs
-  app.get("/api/activity", async (req, res) => {
+  app.get("/api/activity", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { userId } = req.query;
       let activities;
@@ -2078,7 +2095,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/activity", async (req, res) => {
+  app.post("/api/activity", requireAuth, async (req: AuthRequest, res) => {
     try {
       const validatedData = insertActivityLogSchema.parse(req.body);
       const activity = await storage.createActivityLog(validatedData);
@@ -2103,7 +2120,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Notifications
-  app.get("/api/notifications", async (req, res) => {
+  app.get("/api/notifications", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { userId } = req.query;
       if (!userId || typeof userId !== "string") {
@@ -2118,7 +2135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/notifications", async (req, res) => {
+  app.post("/api/notifications", requireAuth, async (req: AuthRequest, res) => {
     try {
       const validatedData = insertNotificationSchema.parse(req.body);
       const notification = await storage.createNotification(validatedData);
@@ -2142,7 +2159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/notifications/:id/read", async (req, res) => {
+  app.patch("/api/notifications/:id/read", requireAuth, async (req: AuthRequest, res) => {
     try {
       const success = await storage.markNotificationAsRead(req.params.id);
       if (!success) {
@@ -2156,7 +2173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User sessions and online status
-  app.get("/api/team/online", async (req, res) => {
+  app.get("/api/team/online", requireAuth, async (req: AuthRequest, res) => {
     try {
       const onlineUsers = await storage.getOnlineUsers();
       res.json(onlineUsers);
@@ -2167,7 +2184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Comments
-  app.get("/api/comments/:entityType/:entityId", async (req, res) => {
+  app.get("/api/comments/:entityType/:entityId", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { entityType, entityId } = req.params;
       const comments = await storage.getComments(entityType, entityId);
@@ -2178,7 +2195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/comments", async (req, res) => {
+  app.post("/api/comments", requireAuth, async (req: AuthRequest, res) => {
     try {
       const validatedData = insertCommentSchema.parse(req.body);
       const comment = await storage.createComment(validatedData);
@@ -2203,7 +2220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI Interview Assistant Routes
-  app.post("/api/interview-assistant/recommend", async (req, res) => {
+  app.post("/api/interview-assistant/recommend", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewAssistantService } = await import("./services/interviewAssistantService");
       const recommendation = await interviewAssistantService.recommendQuestions(req.body);
@@ -2214,7 +2231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/interview-assistant/session", async (req, res) => {
+  app.post("/api/interview-assistant/session", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewAssistantService } = await import("./services/interviewAssistantService");
       const { candidateId, interviewerId, jobId, questions } = req.body;
@@ -2231,7 +2248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/interview-assistant/process-answer", async (req, res) => {
+  app.post("/api/interview-assistant/process-answer", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewAssistantService } = await import("./services/interviewAssistantService");
       const { sessionId, questionId, answer } = req.body;
@@ -2247,7 +2264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/interview-assistant/generate-report", async (req, res) => {
+  app.post("/api/interview-assistant/generate-report", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { interviewAssistantService } = await import("./services/interviewAssistantService");
       const report = await interviewAssistantService.generateInterviewReport(req.body.session);
