@@ -1,9 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { 
-  insertJobSchema, 
-  insertCandidateSchema, 
+import {
+  insertJobSchema,
+  insertCandidateSchema,
   insertInterviewSchema,
   insertActivityLogSchema,
   insertNotificationSchema,
@@ -19,6 +19,7 @@ import { candidateProfileService } from "./services/candidateProfileService";
 import { organizationalFitService } from "./services/organizationalFitService";
 import { companyConfigService } from "./services/companyConfigService";
 import { ObjectStorageService } from "./objectStorage";
+import { requireAuth, requireRole, type AuthRequest } from "./middleware/auth";
 import multer from "multer";
 
 // Configure multer for file uploads
@@ -30,8 +31,13 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // User routes
-  app.get("/api/users/:id", async (req, res) => {
+  app.get("/api/users/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
+      // 防止越权访问：用户只能获取自己的信息，除非是管理员
+      if (req.params.id !== req.user?.id && req.user?.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden: Cannot access other user's data" });
+      }
+
       const user = await storage.getUser(req.params.id);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
@@ -43,9 +49,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/users", async (req, res) => {
+  app.post("/api/users", requireAuth, async (req: AuthRequest, res) => {
     try {
       const { id, email, fullName, role } = req.body;
+
+      // 防止越权创建：用户只能创建自己的记录，且必须匹配 JWT 中的用户 ID
+      if (id !== req.user?.id) {
+        return res.status(403).json({ error: "Forbidden: Cannot create user for different ID" });
+      }
+
       const user = await storage.createUser({
         id,
         email,
@@ -181,6 +193,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching dashboard metrics:", error);
       res.status(500).json({ error: "Failed to fetch metrics" });
+    }
+  });
+
+  // AI Token usage statistics
+  app.get("/api/ai/token-usage", async (req, res) => {
+    try {
+      const { startDate, endDate, userId, model } = req.query;
+
+      // Build query filters
+      const conversations = await storage.getAiConversations();
+
+      // Filter conversations
+      let filtered = conversations;
+
+      if (startDate) {
+        const start = new Date(startDate as string);
+        filtered = filtered.filter(c => c.createdAt && c.createdAt >= start);
+      }
+
+      if (endDate) {
+        const end = new Date(endDate as string);
+        filtered = filtered.filter(c => c.createdAt && c.createdAt <= end);
+      }
+
+      if (userId) {
+        filtered = filtered.filter(c => c.userId === userId);
+      }
+
+      if (model) {
+        filtered = filtered.filter(c => c.modelUsed === model);
+      }
+
+      // Calculate statistics
+      const totalTokens = filtered.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
+      const totalConversations = filtered.length;
+      const averageTokensPerConversation = totalConversations > 0 ? Math.round(totalTokens / totalConversations) : 0;
+
+      // Group by model
+      const byModel: Record<string, { count: number; tokens: number }> = {};
+      filtered.forEach(c => {
+        const modelName = c.modelUsed || 'unknown';
+        if (!byModel[modelName]) {
+          byModel[modelName] = { count: 0, tokens: 0 };
+        }
+        byModel[modelName].count++;
+        byModel[modelName].tokens += c.tokensUsed || 0;
+      });
+
+      // Group by date (for trend analysis)
+      const byDate: Record<string, number> = {};
+      filtered.forEach(c => {
+        if (c.createdAt) {
+          const date = c.createdAt.toISOString().split('T')[0];
+          byDate[date] = (byDate[date] || 0) + (c.tokensUsed || 0);
+        }
+      });
+
+      // Estimate cost (approximate OpenRouter pricing)
+      // GPT-5: $0.015/1K input, $0.06/1K output (average ~$0.04/1K)
+      // Gemini 2.5 Flash: $0.00007/1K input, $0.00028/1K output (average ~$0.0002/1K)
+      const costEstimates: Record<string, number> = {
+        'openai/gpt-5': 0.04,
+        'openai/gpt-5-chat': 0.04,
+        'google/gemini-2.5-pro': 0.0015,
+        'google/gemini-2.5-flash': 0.0002,
+        'anthropic/claude-sonnet-4': 0.015,
+      };
+
+      let estimatedCost = 0;
+      Object.entries(byModel).forEach(([model, data]) => {
+        const costPer1K = costEstimates[model] || 0.001; // default fallback
+        estimatedCost += (data.tokens / 1000) * costPer1K;
+      });
+
+      res.json({
+        summary: {
+          totalTokens,
+          totalConversations,
+          averageTokensPerConversation,
+          estimatedCost: Math.round(estimatedCost * 100) / 100, // round to 2 decimals
+        },
+        byModel,
+        byDate,
+        period: {
+          start: startDate || (filtered.length > 0 ? filtered[0].createdAt : null),
+          end: endDate || (filtered.length > 0 ? filtered[filtered.length - 1].createdAt : null),
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching token usage:", error);
+      res.status(500).json({ error: "Failed to fetch token usage statistics" });
     }
   });
 
@@ -383,19 +486,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           );
 
+          // 记录 Token 使用
+          try {
+            await storage.createAiConversation({
+              userId: "system",
+              sessionId: `candidate-match-${candidate.id}`,
+              message: `Match candidate ${candidate.name} to job ${job.title}`,
+              response: JSON.stringify(matchResult.match),
+              modelUsed: matchResult.model,
+              tokensUsed: matchResult.usage.totalTokens,
+            });
+          } catch (error) {
+            console.error('[Token Tracking] Failed to record match token usage:', error);
+          }
+
           await storage.createJobMatch({
             candidateId: candidate.id,
             jobId: job.id,
-            matchScore: matchResult.score.toString(),
-            matchReasons: matchResult.reasons,
-            aiAnalysis: matchResult.explanation,
+            matchScore: matchResult.match.score.toString(),
+            matchReasons: matchResult.match.reasons,
+            aiAnalysis: matchResult.match.explanation,
           });
 
           matchesWithJobs.push({
             job,
-            matchScore: matchResult.score,
-            reasons: matchResult.reasons,
-            explanation: matchResult.explanation,
+            matchScore: matchResult.match.score,
+            reasons: matchResult.match.reasons,
+            explanation: matchResult.match.explanation,
           });
         } catch (error) {
           console.error(`Error matching job ${job.id}:`, error);
@@ -546,7 +663,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           contactInfo = resumeParserService.extractContactInfo(parsedText);
           skills = resumeParserService.extractSkills(parsedText);
           experience = resumeParserService.extractExperience(parsedText);
-          aiAnalysis = await aiService.analyzeResume(parsedText);
+
+          // 修复：正确处理返回值并记录 token
+          const analysisResult = await aiService.analyzeResume(parsedText);
+          aiAnalysis = analysisResult.analysis;
+
+          // 记录 token 使用
+          await storage.createAiConversation({
+            userId: "system",
+            sessionId: `resume-parse-${req.params.id}`,
+            message: `Analyze resume for candidate ${candidate.name}`,
+            response: JSON.stringify(aiAnalysis),
+            modelUsed: analysisResult.model,
+            tokensUsed: analysisResult.usage.totalTokens,
+          });
         }
       } else {
         // 使用传统文本分析
@@ -559,7 +689,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         contactInfo = resumeParserService.extractContactInfo(parsedText);
         skills = resumeParserService.extractSkills(parsedText);
         experience = resumeParserService.extractExperience(parsedText);
-        aiAnalysis = await aiService.analyzeResume(parsedText);
+
+        // 修复：正确处理返回值并记录 token
+        const analysisResult = await aiService.analyzeResume(parsedText);
+        aiAnalysis = analysisResult.analysis;
+
+        // 记录 token 使用
+        await storage.createAiConversation({
+          userId: "system",
+          sessionId: `resume-parse-${req.params.id}`,
+          message: `Analyze resume for candidate ${candidate.name}`,
+          response: JSON.stringify(aiAnalysis),
+          modelUsed: analysisResult.model,
+          tokensUsed: analysisResult.usage.totalTokens,
+        });
       }
 
       }
@@ -1147,10 +1290,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate both basic and AI-powered match
       const basicMatch = matchingService.calculateBasicMatch(candidate, job);
-      
+
       let aiMatch;
       try {
-        const aiMatchResult = await aiService.matchCandidateToJob(
+        const matchResult = await aiService.matchCandidateToJob(
           {
             skills: (candidate.skills as string[]) || [],
             experience: candidate.experience || 0,
@@ -1163,7 +1306,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             description: job.description,
           }
         );
-        aiMatch = aiMatchResult;
+
+        // Extract the match object from the result
+        aiMatch = matchResult.match;
+
+        // Record token usage for AI matching
+        try {
+          await storage.createAiConversation({
+            userId: "system",
+            sessionId: `calculate-match-${candidate.id}-${jobId}`,
+            message: `Calculate detailed match score for candidate ${candidate.name} and job ${job.title}`,
+            response: JSON.stringify(matchResult.match),
+            modelUsed: matchResult.model,
+            tokensUsed: matchResult.usage.totalTokens,
+          });
+        } catch (tokenError) {
+          console.error('[Token Tracking] Failed to record match token usage:', tokenError);
+        }
       } catch (error) {
         console.error("AI match failed, using basic match:", error);
         aiMatch = { score: basicMatch, reasons: ["Basic matching used"], explanation: "AI matching unavailable" };
@@ -1734,34 +1893,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Message is required" });
       }
 
-      let response;
-      
+      let result;
+
       if (templateId) {
         // Use specific template
         const template = await promptTemplateService.getTemplate(templateId);
         if (!template) {
           return res.status(404).json({ error: "Template not found" });
         }
-        
+
         // Render template with provided variables
         const renderedPrompt = await promptTemplateService.renderTemplate(templateId, req.body.variables || {});
-        response = await aiService.chatWithAssistant(renderedPrompt, context);
+        result = await aiService.chatWithAssistant(renderedPrompt, context);
       } else {
         // Use general chat
-        response = await aiService.chatWithAssistant(message, context);
+        result = await aiService.chatWithAssistant(message, context);
       }
 
-      // Store conversation
+      // Store conversation with actual token usage
       await storage.createAiConversation({
         userId: "default-user", // TODO: Get from auth
         sessionId: sessionId || "default-session",
         message,
-        response,
-        modelUsed: "gpt-5",
-        tokensUsed: 0, // TODO: Track actual tokens
+        response: result.response,
+        modelUsed: result.model,
+        tokensUsed: result.usage.totalTokens,
       });
 
-      res.json({ response });
+      res.json({
+        response: result.response,
+        usage: result.usage,
+        model: result.model,
+      });
     } catch (error) {
       console.error("Error in AI chat:", error);
       res.status(500).json({ error: "Failed to get AI response" });
@@ -1819,24 +1982,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           );
 
-          // Update candidate match score
+          // Record token usage for AI matching
+          try {
+            await storage.createAiConversation({
+              userId: "system",
+              sessionId: `bulk-match-${jobId}-${candidateId}`,
+              message: `Bulk match candidate ${candidate.name} to job ${job.title}`,
+              response: JSON.stringify(matchResult.match),
+              modelUsed: matchResult.model,
+              tokensUsed: matchResult.usage.totalTokens,
+            });
+          } catch (tokenError) {
+            console.error('[Token Tracking] Failed to record bulk match token usage:', tokenError);
+          }
+
+          // Update candidate match score (access match object)
           await storage.updateCandidate(candidateId, {
-            matchScore: matchResult.score.toString(),
+            matchScore: matchResult.match.score.toString(),
           });
 
-          // Store match result
+          // Store match result (access match object properties)
           await storage.createJobMatch({
             candidateId,
             jobId,
-            matchScore: matchResult.score.toString(),
-            matchReasons: matchResult.reasons,
-            aiAnalysis: matchResult.explanation,
+            matchScore: matchResult.match.score.toString(),
+            matchReasons: matchResult.match.reasons,
+            aiAnalysis: matchResult.match.explanation,
           });
 
           results.push({
             candidateId,
-            matchScore: matchResult.score,
-            reasons: matchResult.reasons,
+            matchScore: matchResult.match.score,
+            reasons: matchResult.match.reasons,
           });
         } catch (error) {
           console.error(`Error matching candidate ${candidateId}:`, error);

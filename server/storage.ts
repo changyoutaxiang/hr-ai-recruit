@@ -49,6 +49,7 @@ export interface IStorage {
 
   // AI Conversations
   createAiConversation(conversation: InsertAiConversation): Promise<AiConversation>;
+  getAiConversations(): Promise<AiConversation[]>;
   getAiConversationsBySession(sessionId: string): Promise<AiConversation[]>;
 
   // Job Matches
@@ -586,6 +587,14 @@ export class MemStorage implements IStorage {
     };
     this.aiConversations.set(conversation.id, conversation);
     return conversation;
+  }
+
+  async getAiConversations(): Promise<AiConversation[]> {
+    return Array.from(this.aiConversations.values()).sort((a, b) => {
+      const timeA = a.createdAt?.getTime() || 0;
+      const timeB = b.createdAt?.getTime() || 0;
+      return timeB - timeA;
+    });
   }
 
   async getAiConversationsBySession(sessionId: string): Promise<AiConversation[]> {

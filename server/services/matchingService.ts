@@ -28,11 +28,12 @@ export class MatchingService {
           }
         );
 
+        // Extract match object from result (matchResult contains { match, usage, model })
         matches.push({
           candidate,
-          matchScore: matchResult.score,
-          reasons: matchResult.reasons,
-          explanation: matchResult.explanation,
+          matchScore: matchResult.match.score,
+          reasons: matchResult.match.reasons,
+          explanation: matchResult.match.explanation,
         });
       } catch (error) {
         console.error(`Error matching candidate ${candidate.id} to job ${job.id}:`, error);
@@ -63,11 +64,12 @@ export class MatchingService {
           }
         );
 
+        // Extract match object from result (matchResult contains { match, usage, model })
         matches.push({
           candidate,
-          matchScore: matchResult.score,
-          reasons: matchResult.reasons,
-          explanation: matchResult.explanation,
+          matchScore: matchResult.match.score,
+          reasons: matchResult.match.reasons,
+          explanation: matchResult.match.explanation,
         });
       } catch (error) {
         console.error(`Error matching job ${job.id} to candidate ${candidate.id}:`, error);

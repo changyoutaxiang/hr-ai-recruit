@@ -24,6 +24,12 @@ const MODELS = {
   DEFAULT: process.env.AI_MODEL || "google/gemini-2.5-pro"
 };
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface ResumeAnalysis {
   summary: string;
   skills: string[];
@@ -34,17 +40,30 @@ export interface ResumeAnalysis {
   recommendations: string[];
 }
 
+export interface ResumeAnalysisResult {
+  analysis: ResumeAnalysis;
+  usage: TokenUsage;
+  model: string;
+}
+
 export interface MatchResult {
   score: number;
   reasons: string[];
   explanation: string;
 }
 
+export interface MatchResultWithUsage {
+  match: MatchResult;
+  usage: TokenUsage;
+  model: string;
+}
+
 export class AIService {
-  async analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
+  async analyzeResume(resumeText: string): Promise<ResumeAnalysisResult> {
     try {
+      const model = MODELS.RESUME_ANALYSIS;
       const response = await openai.chat.completions.create({
-        model: MODELS.RESUME_ANALYSIS,
+        model,
         messages: [
           {
             role: "system",
@@ -89,7 +108,20 @@ Important:
         throw new Error("No response from AI");
       }
 
-      return JSON.parse(content) as ResumeAnalysis;
+      const analysis = JSON.parse(content) as ResumeAnalysis;
+
+      // Extract token usage from response
+      const usage: TokenUsage = {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      };
+
+      return {
+        analysis,
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error analyzing resume:", error);
       throw new Error("Failed to analyze resume: " + (error instanceof Error ? error.message : "Unknown error"));
@@ -105,10 +137,11 @@ Important:
     title: string;
     requirements: string[];
     description: string;
-  }): Promise<MatchResult> {
+  }): Promise<MatchResultWithUsage> {
     try {
+      const model = MODELS.MATCHING;
       const response = await openai.chat.completions.create({
-        model: MODELS.MATCHING,
+        model,
         messages: [
           {
             role: "system",
@@ -145,7 +178,20 @@ Important:
         throw new Error("No response from AI");
       }
 
-      return JSON.parse(content) as MatchResult;
+      const match = JSON.parse(content) as MatchResult;
+
+      // Extract token usage
+      const usage: TokenUsage = {
+        promptTokens: response.usage?.prompt_tokens || 0,
+        completionTokens: response.usage?.completion_tokens || 0,
+        totalTokens: response.usage?.total_tokens || 0,
+      };
+
+      return {
+        match,
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error matching candidate to job:", error);
       throw new Error("Failed to match candidate: " + (error instanceof Error ? error.message : "Unknown error"));
@@ -188,8 +234,9 @@ Important:
     }
   }
 
-  async chatWithAssistant(message: string, context?: string): Promise<string> {
+  async chatWithAssistant(message: string, context?: string): Promise<{ response: string; usage: TokenUsage; model: string }> {
     try {
+      const model = MODELS.CHAT;
       const systemMessage = `You are an AI assistant specialized in HR and recruitment. You help HR managers with:
       - Candidate evaluation and analysis
       - Interview preparation and questions
@@ -209,17 +256,27 @@ Important:
 
       messages.push({ role: "user", content: message });
 
-      const response = await openai.chat.completions.create({
-        model: MODELS.CHAT,
+      const apiResponse = await openai.chat.completions.create({
+        model,
         messages,
       });
 
-      const content = response.choices[0].message.content;
+      const content = apiResponse.choices[0].message.content;
       if (!content) {
         throw new Error("No response from AI");
       }
 
-      return content;
+      const usage: TokenUsage = {
+        promptTokens: apiResponse.usage?.prompt_tokens || 0,
+        completionTokens: apiResponse.usage?.completion_tokens || 0,
+        totalTokens: apiResponse.usage?.total_tokens || 0,
+      };
+
+      return {
+        response: content,
+        usage,
+        model,
+      };
     } catch (error) {
       console.error("Error in AI chat:", error);
       throw new Error("Failed to get AI response: " + (error instanceof Error ? error.message : "Unknown error"));

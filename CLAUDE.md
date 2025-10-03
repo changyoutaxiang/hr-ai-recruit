@@ -264,3 +264,4 @@ Error: Invalid API key for Context7
    ```
 
 4. 重启 Claude Code 并观察启动日志
+- 每完成一个todo，都要用code review子代理进行代码审查

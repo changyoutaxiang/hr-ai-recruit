@@ -57,10 +57,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUserProfile = async (userId: string) => {
     try {
       console.log('[AuthContext] Loading profile for user:', userId);
+
+      // 获取当前 session 的 JWT token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        console.error('[AuthContext] No session token available');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch(`/api/users/${userId}`, {
-        credentials: 'include',
         headers: {
           'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`, // 添加 JWT token 进行认证
         },
       });
 
@@ -86,13 +97,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (response.status === 404) {
         console.log('[AuthContext] User not found in database, creating...');
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const token = currentSession?.access_token;
+
+        if (user && token) {
           const createResponse = await fetch('/api/users', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
             },
-            credentials: 'include',
             body: JSON.stringify({
               id: user.id,
               email: user.email,
@@ -146,11 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) throw error;
 
-    if (data.user) {
+    if (data.user && data.session) {
       await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${data.session.access_token}`,
+        },
         body: JSON.stringify({
           id: data.user.id,
           email: data.user.email,
