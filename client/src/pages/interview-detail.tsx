@@ -697,11 +697,27 @@ export default function InterviewDetailPage() {
 
                         {candidate.resumeUrl && (
                           <div className="pt-4 border-t">
-                            <Button variant="outline" asChild>
-                              <a href={candidate.resumeUrl} target="_blank" rel="noopener noreferrer">
-                                <FileText className="h-4 w-4 mr-2" />
-                                查看简历
-                              </a>
+                            <Button
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch(`/api/candidates/${candidate.id}/resume/download`);
+                                  if (!response.ok) {
+                                    throw new Error('Failed to get download URL');
+                                  }
+                                  const data = await response.json();
+                                  window.open(data.url, '_blank');
+                                } catch (error) {
+                                  toast({
+                                    title: "下载失败",
+                                    description: "无法获取简历下载链接，请稍后重试",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              查看简历
                             </Button>
                           </div>
                         )}

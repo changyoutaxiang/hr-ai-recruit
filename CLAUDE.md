@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **数据库**: PostgreSQL (Neon serverless)
 - **UI**: Radix UI + shadcn/ui + Tailwind CSS
 - **AI**: OpenAI GPT-5
-- **存储**: Google Cloud Storage
+- **存储**: Supabase Storage
 
 ### 项目结构
 ```
@@ -47,8 +47,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │   │   ├── resumeParser.ts      # 简历解析服务
 │   │   ├── matchingService.ts   # 候选人匹配服务
 │   │   └── promptTemplates.ts   # 提示词模板服务
-│   ├── objectStorage.ts # GCS 文件存储
-│   ├── objectAcl.ts     # 文件访问控制
 │   └── websocket.ts     # WebSocket 实时通信
 └── shared/
     └── schema.ts        # Drizzle ORM schema (数据库表定义)
@@ -87,10 +85,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 提示词模板: 可定制的模板系统，确保 AI 交互的一致性
 
 ### 文件上传
-- 使用 Google Cloud Storage 存储文件
+- 使用 Supabase Storage 存储文件
 - Multer 处理文件上传
 - pdf-parse 提取 PDF 简历文本
-- Uppy.js 提供客户端上传界面
+- 前端直接上传到 Supabase Storage
 
 ## 环境要求
 
@@ -117,6 +115,60 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `ENABLE_VISION_PARSING` - 启用视觉解析（默认 true）
 - `NODE_ENV` - 运行环境（development/production）
 - `SESSION_SECRET` - Session 密钥（生产环境必须修改）
+- `CORS_ORIGIN` - 跨域配置（生产环境必须设置为前端域名）
+
+### 文件存储配置
+
+本项目使用 Supabase Storage 进行文件存储。**首次部署时，代码会自动创建 bucket**，但您也可以手动配置：
+
+#### 选项 1：自动创建（推荐）
+
+代码会在首次启动时自动创建 `resumes` bucket，配置如下：
+- 访问权限：私有（private）
+- 文件大小限制：10MB
+- 允许的文件类型：PDF、DOC、DOCX
+
+#### 选项 2：手动创建
+
+如果需要自定义配置，可手动创建：
+
+1. **登录 Supabase Dashboard**：
+   - 访问 [https://supabase.com/dashboard](https://supabase.com/dashboard)
+   - 选择您的项目
+
+2. **创建 Storage Bucket**：
+   - 导航到 Storage → Create a new bucket
+   - Bucket 名称：`resumes`（必须使用此名称）
+   - Public bucket：**取消勾选**（保持私有）
+   - 点击 "Create bucket"
+
+3. **配置存储策略**（可选）：
+   ```sql
+   -- 允许认证用户上传文件
+   CREATE POLICY "Authenticated users can upload resumes"
+   ON storage.objects FOR INSERT
+   TO authenticated
+   WITH CHECK (bucket_id = 'resumes');
+
+   -- 允许认证用户读取文件
+   CREATE POLICY "Authenticated users can read resumes"
+   ON storage.objects FOR SELECT
+   TO authenticated
+   USING (bucket_id = 'resumes');
+   ```
+
+4. **验证配置**：
+   - 在 Storage 页面，您应该看到 `resumes` bucket
+   - 上传一个测试文件验证权限
+
+#### 文件存储说明
+
+- **上传路径格式**：`{candidateId}/{timestamp}-{filename}`
+- **访问方式**：通过签名 URL（有效期 1 小时）
+- **安全性**：所有文件需要认证才能访问
+- **API 端点**：
+  - 上传：`POST /api/candidates/:id/resume`
+  - 下载：`GET /api/candidates/:id/resume/download`
 
 ### 安全注意事项
 

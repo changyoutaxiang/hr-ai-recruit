@@ -437,6 +437,69 @@ export const insertHiringDecisionSchema = createInsertSchema(hiringDecisions).om
   updatedAt: true,
 });
 
+/**
+ * AI Token 使用跟踪表
+ * 记录所有AI调用的token使用和成本，用于成本控制和分析
+ */
+export const aiTokenUsage = pgTable("ai_token_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  /** 关联的用户ID（触发AI调用的用户） */
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+
+  /** 调用场景/功能模块 */
+  operation: varchar("operation", { length: 100 }).notNull(),
+  // 例如: resume_analysis, profile_generation, interview_feedback, etc.
+
+  /** 关联的实体类型和ID（可选） */
+  entityType: varchar("entity_type", { length: 50 }),
+  // candidate, job, interview, etc.
+  entityId: varchar("entity_id"),
+
+  /** 使用的AI模型 */
+  model: varchar("model", { length: 100 }).notNull(),
+  // 例如: gpt-4o, gpt-4-turbo-preview, etc.
+
+  /** Token使用统计 */
+  promptTokens: integer("prompt_tokens").notNull(),
+  completionTokens: integer("completion_tokens").notNull(),
+  totalTokens: integer("total_tokens").notNull(),
+
+  /** 成本计算（美元） */
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 6 }),
+  // 根据模型定价计算的成本
+
+  /** 调用是否成功 */
+  success: boolean("success").notNull().default(true),
+
+  /** 错误信息（如果失败） */
+  errorMessage: text("error_message"),
+
+  /** 调用耗时（毫秒） */
+  latencyMs: integer("latency_ms"),
+
+  /** 重试次数 */
+  retryCount: integer("retry_count").notNull().default(0),
+
+  /** 额外元数据 */
+  metadata: jsonb("metadata"),
+  // 可存储: temperature, max_tokens, response_format等配置参数
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // 索引优化查询性能
+  userIdx: index("idx_ai_token_usage_user").on(table.userId),
+  operationIdx: index("idx_ai_token_usage_operation").on(table.operation),
+  entityIdx: index("idx_ai_token_usage_entity").on(table.entityType, table.entityId),
+  createdAtIdx: index("idx_ai_token_usage_created_at").on(table.createdAt),
+  modelIdx: index("idx_ai_token_usage_model").on(table.model),
+}));
+
+export const insertAiTokenUsageSchema = createInsertSchema(aiTokenUsage).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -482,6 +545,9 @@ export type InsertInterviewPreparation = z.infer<typeof insertInterviewPreparati
 
 export type HiringDecision = typeof hiringDecisions.$inferSelect;
 export type InsertHiringDecision = z.infer<typeof insertHiringDecisionSchema>;
+
+export type AiTokenUsage = typeof aiTokenUsage.$inferSelect;
+export type InsertAiTokenUsage = z.infer<typeof insertAiTokenUsageSchema>;
 
 // 面试准备材料的 TypeScript 类型定义
 export const candidateContextSchema = z.object({

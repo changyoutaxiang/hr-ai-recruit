@@ -6,6 +6,7 @@ import type { ResumeAnalysis } from "./aiService";
 import { organizationalFitService, type CultureFitAssessment, type LeadershipAssessment } from "./organizationalFitService";
 import { evidenceService } from "./evidenceService";
 import type { Evidence, EvidenceChain, ClaimType, EvidenceSource, EvidenceStrength } from "@shared/types/evidence";
+import { aiTokenTracker } from "./aiTokenTrackerService";
 import {
   candidateContextSchema,
   suggestedQuestionSchema,
@@ -127,7 +128,52 @@ export type ProfileData = z.infer<typeof ProfileDataSchema>;
 export type CandidateProfileData = z.infer<typeof CandidateProfileDataSchema>;
 
 export class CandidateProfileService {
-  private updateLocks = new Map<string, Promise<any>>();
+  // 锁管理：存储 Promise 和开始时间
+  private updateLocks = new Map<string, { promise: Promise<CandidateProfile>, startTime: number }>();
+
+  // 结果缓存：实现幂等性，避免重复计算
+  private resultCache = new Map<string, { result: CandidateProfile, timestamp: number }>();
+
+  // 锁清理定时器
+  private lockCleanerInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // 启动锁清理机制（每30秒检查一次）
+    this.startLockCleaner();
+  }
+
+  /**
+   * 定期清理超时的锁，防止内存泄漏
+   */
+  private startLockCleaner() {
+    this.lockCleanerInterval = setInterval(() => {
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const [key, { startTime }] of this.updateLocks.entries()) {
+        // 清理超过1分钟的锁
+        if (now - startTime > 60000) {
+          this.updateLocks.delete(key);
+          cleanedCount++;
+          this.log("warn", "清理超时锁", { lockKey: key, age: now - startTime });
+        }
+      }
+
+      if (cleanedCount > 0) {
+        this.log("info", "锁清理完成", { cleanedCount, remainingLocks: this.updateLocks.size });
+      }
+    }, 30000);
+  }
+
+  /**
+   * 停止锁清理机制（用于测试或服务关闭）
+   */
+  stopLockCleaner() {
+    if (this.lockCleanerInterval) {
+      clearInterval(this.lockCleanerInterval);
+      this.lockCleanerInterval = null;
+    }
+  }
 
   async buildInitialProfile(
     candidateId: string,
@@ -225,17 +271,105 @@ export class CandidateProfileService {
       throw new Error("interviewId 不能为空");
     }
 
-    if (this.updateLocks.has(candidateId)) {
-      throw new Error(`候选人 ${candidateId} 的画像正在更新中，请稍后重试`);
+    // 使用更细粒度的锁：candidateId + interviewId
+    // 允许同一候选人的不同面试反馈并行处理
+    const lockKey = `${candidateId}:${interviewId}`;
+
+    // 1. 检查缓存（5分钟内的结果直接返回，实现幂等性）
+    const cached = this.resultCache.get(lockKey);
+    if (cached && Date.now() - cached.timestamp < 300000) {
+      this.log("info", "返回缓存的画像更新结果", {
+        lockKey,
+        cacheAge: Date.now() - cached.timestamp
+      });
+      return cached.result;
     }
 
+    // 2. 如果已有相同的更新在进行，等待它完成（带超时保护）
+    if (this.updateLocks.has(lockKey)) {
+      this.log("info", "等待已存在的画像更新完成", { candidateId, interviewId });
+
+      const lockData = this.updateLocks.get(lockKey)!;
+      const existingPromise = lockData.promise;
+
+      // 创建超时 Promise（30秒超时）
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("等待画像更新超时，可能存在死锁"));
+        }, 30000);
+      });
+
+      try {
+        // 等待现有更新完成或超时
+        return await Promise.race([existingPromise, timeoutPromise]);
+      } catch (error) {
+        // 超时后强制清除锁，允许重试
+        this.updateLocks.delete(lockKey);
+        this.log("error", "等待更新超时，强制清除锁", {
+          lockKey,
+          error: error instanceof Error ? error.message : '未知错误',
+          lockAge: Date.now() - lockData.startTime
+        });
+        throw new Error(`画像更新超时: ${error instanceof Error ? error.message : '未知错误'}`);
+      }
+    }
+
+    // 3. 创建新的更新操作
     const updatePromise = this._doUpdateProfileWithInterview(candidateId, interviewId);
-    this.updateLocks.set(candidateId, updatePromise);
+    this.updateLocks.set(lockKey, {
+      promise: updatePromise,
+      startTime: Date.now()
+    });
 
     try {
-      return await updatePromise;
-    } finally {
-      this.updateLocks.delete(candidateId);
+      const result = await updatePromise;
+
+      // 4. 立即删除锁（不延迟，避免竞态条件）
+      this.updateLocks.delete(lockKey);
+
+      // 5. 缓存结果（5分钟有效期）
+      this.resultCache.set(lockKey, {
+        result,
+        timestamp: Date.now()
+      });
+
+      this.log("info", "画像更新成功，锁已释放", {
+        lockKey,
+        profileVersion: result.version
+      });
+
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+
+      // 6. 智能错误处理：区分可重试和不可重试的错误
+      const isRetryableError =
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("ECONNREFUSED") ||
+        errorMessage.includes("ETIMEDOUT") ||
+        errorMessage.includes("AI 调用超时");
+
+      if (isRetryableError) {
+        // 瞬时错误：立即删除锁，允许重试
+        this.updateLocks.delete(lockKey);
+        this.log("warn", "画像更新遇到可重试错误，锁已释放", {
+          lockKey,
+          error: errorMessage
+        });
+      } else {
+        // 持久性错误：延迟删除锁（5秒），防止重复失败浪费资源
+        setTimeout(() => {
+          this.updateLocks.delete(lockKey);
+          this.log("info", "持久性错误的锁延迟清除完成", { lockKey });
+        }, 5000);
+
+        this.log("error", "画像更新遇到严重错误，5秒后允许重试", {
+          lockKey,
+          error: errorMessage
+        });
+      }
+
+      throw error;
     }
   }
 
@@ -275,14 +409,18 @@ export class CandidateProfileService {
       job = await storage.getJob(interview.jobId);
     }
 
-    // 从面试中提取证据
+    // 从面试中提取完整证据
+    const interviewFeedbackData = this.parseInterviewFeedback(interview);
     const interviewEvidence = await evidenceService.extractEvidenceFromInterview(
       {
         observations: {
-          strengths: interview.aiKeyFindings || [],
+          strengths: interview.aiKeyFindings || interviewFeedbackData.observations?.strengths || [],
+          weaknesses: interview.aiConcernAreas || interviewFeedbackData.observations?.weaknesses || [],
+          redFlags: interviewFeedbackData.observations?.redFlags || [],
+          highlights: interviewFeedbackData.observations?.highlights || [],
         },
-        skillsValidation: [],
-        behavioralEvidence: [],
+        skillsValidation: interviewFeedbackData.skillsValidation || [],
+        behavioralEvidence: interviewFeedbackData.behavioralEvidence || [],
       },
       interviewId,
       interview.interviewerId || "system"
@@ -479,7 +617,18 @@ ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
           response_format: { type: "json_object" },
           temperature: CONFIG.AI_TEMPERATURE,
         },
-        CandidateProfileDataSchema
+        CandidateProfileDataSchema,
+        CONFIG.MAX_RETRIES,
+        {
+          operation: "initial_profile_generation",
+          entityType: "candidate",
+          entityId: candidate.id,
+          metadata: {
+            hasResume: !!resumeAnalysis,
+            hasJob: !!job,
+            evidenceCount: resumeEvidence?.length || 0,
+          },
+        }
       );
 
       return result;
@@ -497,14 +646,40 @@ ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
     job?: Job,
     newEvidence?: Evidence[]
   ): Promise<CandidateProfileData> {
+    // 1. 获取历史证据（从当前画像中提取）
+    const historicalEvidence = this.extractEvidenceFromProfile(currentProfile);
+
+    // 2. 合并所有证据
+    const allEvidence = [...historicalEvidence, ...(newEvidence || [])];
+
+    this.log("info", "证据链整合", {
+      candidateId: candidate.id,
+      historicalEvidenceCount: historicalEvidence.length,
+      newEvidenceCount: newEvidence?.length || 0,
+      totalEvidenceCount: allEvidence.length
+    });
+
+    // 3. 检测证据矛盾
+    const contradictions = await this.detectEvidenceContradictions(allEvidence);
+
+    // 4. 构建证据摘要
+    const evidenceSummary = this.buildEvidenceSummary(allEvidence, newEvidence || []);
+
     const systemPrompt = `你是一位资深的 HR 专家和人才评估专家。你的任务是基于候选人的现有画像和最新的面试反馈，更新候选人画像。
 
 **重要原则：**
-1. **整合新信息**：将面试中获得的新信息与现有画像整合
-2. **保持一致性**：确保更新后的画像在逻辑上一致
-3. **突出变化**：明确指出哪些信息是新增的，哪些评估有所调整
-4. **深化理解**：利用面试信息深化对候选人的理解
-5. **识别差异**：如果面试反馈与简历信息有出入，需要指出
+1. **证据驱动**：所有评估必须基于明确的证据，避免主观臆断
+2. **整合新信息**：将面试中获得的新信息与现有画像整合
+3. **保持一致性**：确保更新后的画像在逻辑上一致
+4. **突出变化**：明确指出哪些信息是新增的，哪些评估有所调整
+5. **深化理解**：利用面试信息深化对候选人的理解
+6. **识别矛盾**：如果面试反馈与简历信息有出入，需要明确指出并基于证据强度判断
+
+**证据处理规则**：
+- 直接证据 (direct) > 强证据 (strong) > 中等证据 (moderate) > 弱证据 (weak) > 推断证据 (inferential)
+- 面试验证的证据优先于简历声称
+- 当证据矛盾时，选择证据强度更高、来源更可信的结论
+- 标注证据不足的评估为"需要进一步验证"
 
 请更新候选人画像，使用与初始画像相同的 JSON 结构，proficiency 只能是: "beginner", "intermediate", "advanced", "expert" 之一。`;
 
@@ -527,6 +702,15 @@ ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
 - 信息缺口：${previousGaps.join(", ")}
 - AI 总结：${this.sanitizeForPrompt(currentProfile.aiSummary || "")}
 
+**证据链分析：**
+${evidenceSummary}
+
+${contradictions.length > 0 ? `
+**检测到的证据矛盾：**
+${contradictions.map(c => `- ${c.claim}: ${c.description}`).join("\n")}
+请在更新画像时明确解决这些矛盾，基于证据强度和来源可信度做出判断。
+` : ""}
+
 **最新面试信息（第 ${latestInterview.round} 轮）：**
 - 面试类型：${latestInterview.type}
 - 面试时间：${latestInterview.scheduledDate}
@@ -547,11 +731,12 @@ ${job ? `\n**目标职位：**
 - 描述：${this.sanitizeForPrompt(job.description)}` : ""}
 
 **请更新画像，确保：**
-1. 整合面试中的新信息
-2. 更新技能评估（如果面试中有体现）
-3. 调整综合评分（基于面试表现）
-4. 更新优势、顾虑和信息缺口
-5. 重新生成 AI 总结，体现画像演进`;
+1. 基于证据整合面试中的新信息
+2. 更新技能评估（标明证据来源和强度）
+3. 调整综合评分（基于证据支撑的面试表现）
+4. 更新优势、顾虑和信息缺口（区分已验证和待验证）
+5. 解决检测到的证据矛盾
+6. 重新生成 AI 总结，体现画像演进和证据增强`;
 
     try {
       const result = await this.callAIWithRetry(
@@ -564,7 +749,21 @@ ${job ? `\n**目标职位：**
           response_format: { type: "json_object" },
           temperature: CONFIG.AI_TEMPERATURE,
         },
-        CandidateProfileDataSchema
+        CandidateProfileDataSchema,
+        CONFIG.MAX_RETRIES,
+        {
+          operation: "profile_update_with_interview",
+          entityType: "interview",
+          entityId: latestInterview.id,
+          metadata: {
+            candidateId: candidate.id,
+            interviewRound: latestInterview.round,
+            interviewType: latestInterview.type,
+            hasJob: !!job,
+            evidenceCount: newEvidence?.length || 0,
+            contradictionsDetected: contradictions.length,
+          },
+        }
       );
 
       const newDataSource = `第${latestInterview.round}轮面试`;
@@ -613,9 +812,17 @@ ${job ? `\n**目标职位：**
   private async callAIWithRetry<T>(
     params: OpenAI.Chat.ChatCompletionCreateParams,
     schema: z.ZodSchema<T>,
-    maxRetries = CONFIG.MAX_RETRIES
+    maxRetries = CONFIG.MAX_RETRIES,
+    trackingInfo?: {
+      operation: string;
+      userId?: string;
+      entityType?: string;
+      entityId?: string;
+      metadata?: any;
+    }
   ): Promise<T> {
     let lastError: Error | null = null;
+    const startTime = Date.now();
 
     for (let i = 0; i < maxRetries; i++) {
       try {
@@ -624,7 +831,29 @@ ${job ? `\n**目标职位：**
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error(`AI 调用超时（${CONFIG.AI_TIMEOUT_MS}ms）`)), CONFIG.AI_TIMEOUT_MS)
           )
-        ]);
+        ]) as OpenAI.Chat.Completions.ChatCompletion;
+
+        const latencyMs = Date.now() - startTime;
+
+        // 记录成功的AI调用
+        if (trackingInfo) {
+          await aiTokenTracker.trackUsage({
+            userId: trackingInfo.userId,
+            operation: trackingInfo.operation,
+            entityType: trackingInfo.entityType,
+            entityId: trackingInfo.entityId,
+            model: params.model,
+            response,
+            success: true,
+            latencyMs,
+            retryCount: i,
+            metadata: {
+              ...trackingInfo.metadata,
+              temperature: params.temperature,
+              maxTokens: params.max_tokens,
+            },
+          });
+        }
 
         const content = response.choices[0].message.content;
         if (!content) {
@@ -635,6 +864,43 @@ ${job ? `\n**目标职位：**
       } catch (error) {
         lastError = error as Error;
         this.log("warn", `AI 调用第 ${i + 1} 次失败`, { error: lastError.message, attempt: i + 1 });
+
+        // 如果是最后一次重试，记录失败
+        if (i === maxRetries - 1 && trackingInfo) {
+          const latencyMs = Date.now() - startTime;
+
+          // 创建一个虚拟响应对象用于记录失败
+          const dummyResponse: OpenAI.Chat.Completions.ChatCompletion = {
+            id: "failed",
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: params.model,
+            choices: [],
+            usage: {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          };
+
+          await aiTokenTracker.trackUsage({
+            userId: trackingInfo.userId,
+            operation: trackingInfo.operation,
+            entityType: trackingInfo.entityType,
+            entityId: trackingInfo.entityId,
+            model: params.model,
+            response: dummyResponse,
+            success: false,
+            errorMessage: lastError.message,
+            latencyMs,
+            retryCount: maxRetries,
+            metadata: {
+              ...trackingInfo.metadata,
+              temperature: params.temperature,
+              maxTokens: params.max_tokens,
+            },
+          });
+        }
 
         if (i < maxRetries - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
@@ -733,6 +999,76 @@ ${job ? `\n**目标职位：**
   }
 
   /**
+   * 解析面试反馈数据，提取结构化的观察、技能验证和行为证据
+   */
+  private parseInterviewFeedback(interview: Interview): {
+    observations?: {
+      strengths?: string[];
+      weaknesses?: string[];
+      redFlags?: string[];
+      highlights?: string[];
+    };
+    skillsValidation?: any[];
+    behavioralEvidence?: any[];
+  } {
+    try {
+      // 尝试解析 feedback 字段（可能是 JSON 字符串）
+      if (interview.feedback) {
+        if (typeof interview.feedback === 'string') {
+          const parsed = JSON.parse(interview.feedback);
+          return {
+            observations: parsed.observations || {},
+            skillsValidation: parsed.skillsValidation || [],
+            behavioralEvidence: parsed.behavioralEvidence || [],
+          };
+        } else if (typeof interview.feedback === 'object') {
+          const feedbackObj = interview.feedback as any;
+          return {
+            observations: feedbackObj.observations || {},
+            skillsValidation: feedbackObj.skillsValidation || [],
+            behavioralEvidence: feedbackObj.behavioralEvidence || [],
+          };
+        }
+      }
+
+      // 如果没有结构化反馈，尝试从其他字段提取
+      const fallbackData: any = {
+        observations: {},
+        skillsValidation: [],
+        behavioralEvidence: [],
+      };
+
+      // 从 interviewerNotes 中提取信息
+      if (interview.interviewerNotes) {
+        fallbackData.observations.strengths = [];
+        fallbackData.observations.weaknesses = [];
+
+        // 简单的关键词提取（后续可以用 AI 优化）
+        const notes = interview.interviewerNotes.toLowerCase();
+        if (notes.includes('优势') || notes.includes('strengths') || notes.includes('good')) {
+          fallbackData.observations.strengths.push(interview.interviewerNotes.substring(0, 200));
+        }
+        if (notes.includes('不足') || notes.includes('weaknesses') || notes.includes('concern')) {
+          fallbackData.observations.weaknesses.push(interview.interviewerNotes.substring(0, 200));
+        }
+      }
+
+      return fallbackData;
+    } catch (error) {
+      this.log("error", "解析面试反馈失败", {
+        interviewId: interview.id,
+        error: error instanceof Error ? error.message : '未知错误'
+      });
+
+      return {
+        observations: {},
+        skillsValidation: [],
+        behavioralEvidence: [],
+      };
+    }
+  }
+
+  /**
    * 从简历分析生成声明（用于证据提取）
    */
   private generateClaimsFromResumeAnalysis(resumeAnalysis: ResumeAnalysis): any[] {
@@ -812,6 +1148,136 @@ ${job ? `\n**目标职位：**
       'portfolio': '作品集'
     };
     return labels[source] || source;
+  }
+
+  /**
+   * 从候选人画像中提取历史证据
+   */
+  private extractEvidenceFromProfile(profile: CandidateProfile): Evidence[] {
+    const evidence: Evidence[] = [];
+
+    try {
+      const profileData = profile.profileData as any;
+
+      // 从技能中提取证据
+      if (profileData.technicalSkills) {
+        for (const skill of profileData.technicalSkills) {
+          if (skill.evidence && Array.isArray(skill.evidence)) {
+            evidence.push(...skill.evidence);
+          }
+        }
+      }
+
+      // 从软技能中提取证据
+      if (profileData.softSkills) {
+        for (const skill of profileData.softSkills) {
+          if (skill.evidence && Array.isArray(skill.evidence)) {
+            evidence.push(...skill.evidence);
+          }
+        }
+      }
+
+      // 从证据摘要中提取（如果存在）
+      if (profileData.evidenceSummary?.evidence) {
+        evidence.push(...profileData.evidenceSummary.evidence);
+      }
+
+      this.log("info", "从画像中提取历史证据", {
+        profileId: profile.id,
+        evidenceCount: evidence.length
+      });
+
+      return evidence;
+    } catch (error) {
+      this.log("error", "提取历史证据失败", {
+        profileId: profile.id,
+        error: error instanceof Error ? error.message : '未知错误'
+      });
+      return [];
+    }
+  }
+
+  /**
+   * 检测证据矛盾
+   */
+  private async detectEvidenceContradictions(allEvidence: Evidence[]): Promise<Array<{
+    claim: string;
+    description: string;
+    conflictingEvidence: Evidence[];
+  }>> {
+    const contradictions: Array<{
+      claim: string;
+      description: string;
+      conflictingEvidence: Evidence[];
+    }> = [];
+
+    try {
+      // 按声明分组证据
+      const evidenceByStatement = new Map<string, Evidence[]>();
+
+      for (const evidence of allEvidence) {
+        const key = evidence.originalText.toLowerCase().substring(0, 50); // 使用前50个字符作为简单的分组键
+        if (!evidenceByStatement.has(key)) {
+          evidenceByStatement.set(key, []);
+        }
+        evidenceByStatement.get(key)!.push(evidence);
+      }
+
+      // 检测矛盾
+      for (const [statement, evidences] of evidenceByStatement.entries()) {
+        if (evidences.length > 1) {
+          // 检查是否有矛盾的证据（简单版本：来源不同且强度冲突）
+          const resumeEvidence = evidences.filter((e: Evidence) => e.source === 'resume');
+          const interviewEvidence = evidences.filter((e: Evidence) => e.source === 'interview_feedback');
+
+          if (resumeEvidence.length > 0 && interviewEvidence.length > 0) {
+            // 这里可以使用 AI 进行更精确的矛盾检测
+            contradictions.push({
+              claim: statement,
+              description: `简历声称与面试验证存在差异`,
+              conflictingEvidence: [...resumeEvidence, ...interviewEvidence]
+            });
+          }
+        }
+      }
+
+      this.log("info", "证据矛盾检测完成", {
+        totalEvidence: allEvidence.length,
+        contradictionsFound: contradictions.length
+      });
+
+      return contradictions;
+    } catch (error) {
+      this.log("error", "证据矛盾检测失败", {
+        error: error instanceof Error ? error.message : '未知错误'
+      });
+      return [];
+    }
+  }
+
+  /**
+   * 构建证据摘要
+   */
+  private buildEvidenceSummary(allEvidence: Evidence[], newEvidence: Evidence[]): string {
+    const totalEvidence = allEvidence.length;
+    const newEvidenceCount = newEvidence.length;
+
+    const strongEvidence = allEvidence.filter(e =>
+      e.strength === 'direct' || e.strength === 'strong'
+    );
+
+    const averageConfidence = totalEvidence > 0
+      ? allEvidence.reduce((sum, e) => sum + (e.confidence || 50), 0) / totalEvidence
+      : 0;
+
+    const sources = Array.from(new Set(allEvidence.map(e => this.getEvidenceSourceLabel(e.source))));
+
+    return `
+- 总证据数：${totalEvidence} 条（本轮新增 ${newEvidenceCount} 条）
+- 强力证据：${strongEvidence.length} 条（直接证据或强证据）
+- 平均置信度：${averageConfidence.toFixed(0)}%
+- 证据来源：${sources.join('、')}
+- 证据密度：${totalEvidence > 10 ? '充分' : totalEvidence > 5 ? '良好' : '一般'}`;
   }
 
   /**

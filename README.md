@@ -383,8 +383,6 @@ hr-ai-recruit/
 │   │   ├── hiringDecisionService.ts        # 决策支持
 │   │   └── ...
 │   ├── middleware/         # 中间件
-│   ├── objectStorage.ts    # Google Cloud Storage
-│   ├── objectAcl.ts        # 访问控制
 │   └── websocket.ts        # WebSocket 服务
 │
 ├── shared/

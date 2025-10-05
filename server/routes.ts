@@ -18,7 +18,7 @@ import { promptTemplateService } from "./services/promptTemplates";
 import { candidateProfileService } from "./services/candidateProfileService";
 import { organizationalFitService } from "./services/organizationalFitService";
 import { companyConfigService } from "./services/companyConfigService";
-import { ObjectStorageService } from "./objectStorage";
+import { supabaseStorageService } from "./services/supabaseStorage";
 import { requireAuth, requireRole, type AuthRequest } from "./middleware/auth";
 import multer from "multer";
 
@@ -87,18 +87,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating user:", error);
       res.status(500).json({ error: "Failed to create user" });
-    }
-  });
-
-  // Object storage routes
-  app.post("/api/objects/upload", requireAuth, async (req: AuthRequest, res) => {
-    try {
-      const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
-    } catch (error) {
-      console.error("Error getting upload URL:", error);
-      res.status(500).json({ error: "Failed to get upload URL" });
     }
   });
 
@@ -466,12 +454,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
+      // 先获取候选人信息以获得简历文件路径
+      const candidate = await storage.getCandidate(req.params.id);
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // 检查是否有关联的面试和职位匹配记录
+      const relatedInterviews = await storage.getInterviewsByCandidate(req.params.id);
+      const relatedMatches = await storage.getJobMatchesForCandidate(req.params.id);
+
+      if (relatedInterviews.length > 0 || relatedMatches.length > 0) {
+        return res.status(409).json({
+          error: "Cannot delete candidate with existing interviews or job matches",
+          details: {
+            interviews: relatedInterviews.length,
+            jobMatches: relatedMatches.length,
+            message: "请先删除相关的面试记录和职位匹配记录"
+          }
+        });
+      }
+
+      // 如果有简历文件，先从 Storage 删除
+      if (candidate.resumeUrl) {
+        try {
+          await supabaseStorageService.deleteResume(candidate.resumeUrl);
+          console.log(`[Candidate Delete] Deleted resume file: ${candidate.resumeUrl}`);
+        } catch (storageError) {
+          console.error(`[Candidate Delete] Failed to delete resume file:`, storageError);
+          // 继续删除候选人记录，但记录错误
+          // 孤儿文件可以通过定期清理任务处理
+        }
+      }
+
+      // 删除数据库记录
       const deleted = await storage.deleteCandidate(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Candidate not found" });
       }
+
       res.status(204).send();
     } catch (error) {
+      console.error("[Candidate Delete] Error:", error);
       res.status(500).json({ error: "Failed to delete candidate" });
     }
   });
@@ -724,9 +748,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       }
 
+      // 删除旧简历文件（如果存在）
+      if (candidate.resumeUrl) {
+        try {
+          console.log(`[Resume Upload] Deleting old resume: ${candidate.resumeUrl}`);
+          await supabaseStorageService.deleteResume(candidate.resumeUrl);
+          console.log(`[Resume Upload] Old resume deleted successfully`);
+        } catch (deleteError) {
+          console.warn(`[Resume Upload] Failed to delete old resume:`, deleteError);
+          // 继续上传新文件，旧文件可通过定期清理任务处理
+        }
+      }
+
+      // 上传简历文件到 Supabase Storage
+      let resumeFilePath: string | undefined;
+      try {
+        console.log(`[Resume Upload] Uploading file to Supabase Storage...`);
+        resumeFilePath = await supabaseStorageService.uploadResume(
+          req.params.id,
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype
+        );
+        console.log(`[Resume Upload] File uploaded successfully: ${resumeFilePath}`);
+      } catch (storageError) {
+        console.error(`[Resume Upload] Failed to upload file to storage:`, storageError);
+        // 继续处理，但记录错误
+      }
+
       // Update candidate with parsed information
       const updatedCandidate = await storage.updateCandidate(req.params.id, {
         resumeText: parsedText,
+        resumeUrl: resumeFilePath, // 添加简历文件路径
         skills: skills.length > 0 ? skills : aiAnalysis.skills,
         experience: experience > 0 ? experience : aiAnalysis.experience,
         aiSummary: interviewerBrief || aiAnalysis.summary,  // 优先使用面试官简报
@@ -790,6 +843,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error processing resume:", error);
       res.status(500).json({ error: "Failed to process resume" });
+    }
+  });
+
+  // 获取简历下载链接
+  app.get("/api/candidates/:id/resume/download", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const candidate = await storage.getCandidate(req.params.id);
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // 权限检查：只有管理员或候选人创建者可以下载简历
+      if (req.user?.role !== 'admin' && candidate.createdBy !== req.user?.id) {
+        return res.status(403).json({ error: "Forbidden: You don't have permission to access this resume" });
+      }
+
+      if (!candidate.resumeUrl) {
+        return res.status(404).json({ error: "No resume file found for this candidate" });
+      }
+
+      // 生成签名 URL（有效期 1 小时）
+      const signedUrl = await supabaseStorageService.getResumeSignedUrl(candidate.resumeUrl);
+
+      res.json({
+        url: signedUrl,
+        filename: candidate.resumeUrl.split('/').pop(), // 从路径提取文件名
+        expiresIn: 3600 // 1 小时
+      });
+    } catch (error) {
+      console.error("Error getting resume download URL:", error);
+      res.status(500).json({ error: "Failed to get resume download URL" });
     }
   });
 

@@ -13,6 +13,11 @@ vite.config.ts.*
 # MCP configuration with sensitive API keys
 .mcp.json
 
+# Replit configuration (project is platform-independent)
+.replit
+.replit.nix
+.local/
+
 # Database and migrations
 migrations/
 drizzle/

@@ -13,7 +13,8 @@ import {
   type Comment, type InsertComment,
   type CandidateProfile, type InsertCandidateProfile,
   type InterviewPreparation, type InsertInterviewPreparation,
-  type HiringDecision, type InsertHiringDecision
+  type HiringDecision, type InsertHiringDecision,
+  type AiTokenUsage, type InsertAiTokenUsage
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -94,6 +95,13 @@ export interface IStorage {
 
   // Additional user methods
   getUsers(): Promise<User[]>;
+
+  // AI Token Usage
+  createAiTokenUsage(usage: InsertAiTokenUsage): Promise<AiTokenUsage>;
+  getAiTokenUsage(startDate?: Date, endDate?: Date): Promise<AiTokenUsage[]>;
+  getAiTokenUsageByOperation(operation: string): Promise<AiTokenUsage[]>;
+  getAiTokenUsageByUser(userId: string, startDate?: Date, endDate?: Date): Promise<AiTokenUsage[]>;
+  getTotalCostByPeriod(startDate: Date, endDate: Date): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -111,6 +119,7 @@ export class MemStorage implements IStorage {
   private candidateProfiles: Map<string, CandidateProfile> = new Map();
   private interviewPreparations: Map<string, InterviewPreparation> = new Map();
   private hiringDecisions: Map<string, HiringDecision> = new Map();
+  private aiTokenUsages: Map<string, AiTokenUsage> = new Map();
 
   constructor() {
     // Initialize with some sample data for development
@@ -953,6 +962,85 @@ export class MemStorage implements IStorage {
     const candidateIds = jobMatchesForJob.map(match => match.candidateId);
     return Array.from(this.candidates.values())
       .filter(c => candidateIds.includes(c.id));
+  }
+
+  // AI Token Usage Methods
+  async createAiTokenUsage(usage: InsertAiTokenUsage): Promise<AiTokenUsage> {
+    const id = randomUUID();
+    const aiTokenUsage: AiTokenUsage = {
+      id,
+      userId: usage.userId || null,
+      operation: usage.operation,
+      entityType: usage.entityType || null,
+      entityId: usage.entityId || null,
+      model: usage.model,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      estimatedCost: usage.estimatedCost || null,
+      success: usage.success ?? true,
+      errorMessage: usage.errorMessage || null,
+      latencyMs: usage.latencyMs || null,
+      retryCount: usage.retryCount ?? 0,
+      metadata: usage.metadata || null,
+      createdAt: new Date(),
+    };
+    this.aiTokenUsages.set(id, aiTokenUsage);
+    return aiTokenUsage;
+  }
+
+  async getAiTokenUsage(startDate?: Date, endDate?: Date): Promise<AiTokenUsage[]> {
+    let usages = Array.from(this.aiTokenUsages.values());
+
+    if (startDate) {
+      usages = usages.filter(u => u.createdAt && u.createdAt >= startDate);
+    }
+
+    if (endDate) {
+      usages = usages.filter(u => u.createdAt && u.createdAt <= endDate);
+    }
+
+    return usages.sort((a, b) =>
+      (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+    );
+  }
+
+  async getAiTokenUsageByOperation(operation: string): Promise<AiTokenUsage[]> {
+    return Array.from(this.aiTokenUsages.values())
+      .filter(u => u.operation === operation)
+      .sort((a, b) =>
+        (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+      );
+  }
+
+  async getAiTokenUsageByUser(
+    userId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<AiTokenUsage[]> {
+    let usages = Array.from(this.aiTokenUsages.values())
+      .filter(u => u.userId === userId);
+
+    if (startDate) {
+      usages = usages.filter(u => u.createdAt && u.createdAt >= startDate);
+    }
+
+    if (endDate) {
+      usages = usages.filter(u => u.createdAt && u.createdAt <= endDate);
+    }
+
+    return usages.sort((a, b) =>
+      (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
+    );
+  }
+
+  async getTotalCostByPeriod(startDate: Date, endDate: Date): Promise<number> {
+    const usages = await this.getAiTokenUsage(startDate, endDate);
+
+    return usages.reduce((total, usage) => {
+      const cost = usage.estimatedCost ? parseFloat(usage.estimatedCost as string) : 0;
+      return total + cost;
+    }, 0);
   }
 }
 
