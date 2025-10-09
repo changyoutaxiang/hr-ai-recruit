@@ -168,7 +168,7 @@ export class TargetedResumeAnalyzer {
     jobContext: JobContext
   ): Promise<TargetedAnalysis> {
     // 先获取简历的基础解析
-    const resumeData = await enhancedResumeParser.parse(fileBuffer, mimeType, true);
+    const resumeData = await enhancedResumeParser.parse(fileBuffer, mimeType);
 
     // 构建针对性的分析提示词
     const analysisPrompt = this.buildTargetedPrompt(jobContext);

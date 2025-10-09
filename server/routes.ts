@@ -9,17 +9,21 @@ import {
   insertNotificationSchema,
   insertCommentSchema
 } from "@shared/schema";
+import type { TargetedResumeAnalysis } from "@shared/schema";
 import { aiService } from "./services/aiService";
+import type { ResumeAnalysis as AiResumeAnalysis } from "./services/aiService";
 import { resumeParserService } from "./services/resumeParser";
 import { enhancedResumeParser } from "./services/resumeParserEnhanced";
 import { targetedResumeAnalyzer } from "./services/targetedResumeAnalyzer";
+import type { TargetedAnalysis } from "./services/targetedResumeAnalyzer";
 import { matchingService } from "./services/matchingService";
 import { promptTemplateService } from "./services/promptTemplates";
 import { candidateProfileService } from "./services/candidateProfileService";
-import { organizationalFitService } from "./services/organizationalFitService";
+import { organizationalFitService, type CultureFitAssessment, type LeadershipAssessment } from "./services/organizationalFitService";
 import { companyConfigService } from "./services/companyConfigService";
 import { supabaseStorageService } from "./services/supabaseStorage";
-import { requireAuth, requireRole, type AuthRequest } from "./middleware/auth";
+import { requireAuth, requireAuthWithInit, requireRole, type AuthRequest } from "./middleware/auth";
+import { z } from "zod";
 import multer from "multer";
 
 // Configure multer for file uploads
@@ -28,24 +32,47 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     // 只允许 PDF、DOC 和 DOCX 文件
-    const allowedMimeTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
+    const allowedMimeTypes = ['application/pdf'];
 
     if (allowedMimeTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, and DOCX files are allowed.'));
+      cb(new Error('Invalid file type. Only PDF resumes are supported.'));
+    }
+  }
+});
+
+// Configure multer for bulk uploads (multiple files)
+const bulkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 20 // Maximum 20 files per request
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = ['application/pdf'];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF resumes are supported.'));
     }
   }
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Handle Chrome DevTools .well-known requests
+  app.get("/.well-known/*", (req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+
   // User routes
-  app.get("/api/users/:id", requireAuth, async (req: AuthRequest, res) => {
+  app.get("/api/users/:id", requireAuthWithInit, async (req: AuthRequest, res) => {
     try {
       // 防止越权访问：用户只能获取自己的信息，除非是管理员
       if (req.params.id !== req.user?.id && req.user?.role !== 'admin') {
@@ -63,27 +90,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/users", requireAuth, async (req: AuthRequest, res) => {
+  app.post("/api/users", requireAuthWithInit, async (req: AuthRequest, res) => {
     try {
-      const { email, name, role, password } = req.body;
-
-      // 验证必需字段
-      if (!email || !name || !password) {
-        return res.status(400).json({ error: "Email, name, and password are required" });
+      if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // 防止越权创建：只有管理员可以创建用户
-      if (req.user?.role !== 'admin') {
-        return res.status(403).json({ error: "Forbidden: Only administrators can create users" });
+      const { id, email, name, fullName, role, password } = req.body;
+      const isAdmin = req.user.role === 'admin';
+
+      if (isAdmin) {
+        if (!email || !name) {
+          return res.status(400).json({ error: "Email and name are required" });
+        }
+
+        const created = await storage.createUser({
+          id,
+          email,
+          name,
+          role: role || 'hr_manager',
+          password: password ?? 'supabase-managed',
+        });
+        return res.status(201).json(created);
       }
 
-      const user = await storage.createUser({
-        email,
-        name,
-        password, // 注意：实际生产环境中应该先进行密码哈希
-        role: role || 'hr_manager'
+      // 自助注册流程：仅允许为当前登录用户补充资料
+      if (req.user.email !== email && req.user.id !== id) {
+        return res.status(403).json({ error: "Forbidden: Cannot provision other users" });
+      }
+
+      const existing = await storage.getUser(req.user.id);
+      if (existing) {
+        return res.status(200).json(existing);
+      }
+
+      const derivedName = name || fullName || req.user.email?.split('@')[0] || 'Recruiter';
+      const allowedRoles = new Set(['admin', 'recruitment_lead', 'recruiter', 'hiring_manager']);
+      const resolvedRole = allowedRoles.has(role) ? role : 'recruiter';
+
+      const created = await storage.createUser({
+        id: req.user.id,
+        email: req.user.email,
+        name: derivedName,
+        role: resolvedRole,
+        password: 'supabase-managed',
       });
-      res.status(201).json(user);
+
+      return res.status(201).json(created);
     } catch (error) {
       console.error("Error creating user:", error);
       res.status(500).json({ error: "Failed to create user" });
@@ -440,6 +493,168 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk resume upload endpoint
+  app.post("/api/candidates/bulk-upload", requireAuth, bulkUpload.array('resumes', 20), async (req: AuthRequest, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      console.log(`[Bulk Upload] Processing ${files.length} resume files`);
+
+      const results = [];
+      
+      for (const file of files) {
+        try {
+          console.log(`[Bulk Upload] Processing file: ${file.originalname}`);
+          
+          // Parse resume using enhanced parser
+          const parseResult = await enhancedResumeParser.parse(
+            file.buffer,
+            file.mimetype
+          );
+
+          const { text: parsedText, analysis: visionAnalysis } = parseResult;
+          
+          // Extract contact info and basic data
+          const contactInfo = resumeParserService.extractContactInfo(parsedText);
+          
+          const skills = visionAnalysis?.skills || 
+            resumeParserService.extractSkills(parsedText);
+          
+          const experience = visionAnalysis?.experience || 
+            resumeParserService.extractExperience(parsedText);
+
+          // Generate candidate name from filename or contact info
+          const candidateName = contactInfo?.name || 
+            file.originalname.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+
+          // Create candidate
+          const candidateData = {
+            name: candidateName,
+            email: contactInfo?.email || "",
+            phone: contactInfo?.phone || "",
+            skills: skills,
+            experience: typeof experience === 'number' ? experience : parseInt(String(experience)) || 0,
+            education: visionAnalysis?.education || "",
+            resumeText: parsedText,
+          };
+
+          const candidate = await storage.createCandidate(candidateData);
+          
+          // Upload resume file to storage
+          let resumeFilePath: string | undefined;
+          try {
+            resumeFilePath = await supabaseStorageService.uploadResume(
+              candidate.id,
+              file.buffer,
+              file.originalname,
+              file.mimetype
+            );
+            
+            // Update candidate with resume URL
+            await storage.updateCandidate(candidate.id, {
+              resumeUrl: resumeFilePath
+            });
+          } catch (storageError) {
+            console.warn(`[Bulk Upload] Failed to upload resume file for ${candidateName}:`, storageError);
+          }
+
+          // Run AI analysis
+          let aiAnalysis: AiResumeAnalysis | null = null;
+          try {
+            const aiResult = await aiService.analyzeResume(parsedText);
+            if (aiResult?.analysis) {
+              aiAnalysis = aiResult.analysis;
+              
+              // Ensure experience is an integer
+              const experienceValue = aiAnalysis.experience ? 
+                Math.floor(Number(aiAnalysis.experience)) : 
+                (typeof experience === 'number' ? experience : parseInt(String(experience)) || 0);
+              
+              // Update candidate with AI analysis
+              await storage.updateCandidate(candidate.id, {
+                aiSummary: aiAnalysis.summary || "",
+                skills: (aiAnalysis.skills && aiAnalysis.skills.length > 0) ? aiAnalysis.skills : skills,
+                experience: experienceValue,
+              });
+            }
+          } catch (aiError) {
+            console.warn(`[Bulk Upload] AI analysis failed for ${candidateName}:`, aiError);
+          }
+
+          // Generate initial profile
+          let initialProfile = null;
+          try {
+            const resumeAnalysisForProfile = {
+              summary: aiAnalysis?.summary || "",
+              skills: aiAnalysis?.skills || skills,
+              experience: aiAnalysis?.experience || experience,
+              education: candidateData.education,
+              strengths: aiAnalysis?.strengths || [],
+              weaknesses: aiAnalysis?.weaknesses || [],
+              recommendations: aiAnalysis?.recommendations || [],
+            };
+
+            initialProfile = await candidateProfileService.buildInitialProfile(
+              candidate.id,
+              resumeAnalysisForProfile
+            );
+          } catch (profileError) {
+            console.warn(`[Bulk Upload] Profile generation failed for ${candidateName}:`, profileError);
+          }
+
+          results.push({
+            status: 'success',
+            filename: file.originalname,
+            candidate: {
+              id: candidate.id,
+              name: candidate.name,
+              email: candidate.email,
+            },
+            profile: initialProfile ? {
+              id: initialProfile.id,
+              version: initialProfile.version,
+            } : null,
+          });
+
+          console.log(`[Bulk Upload] Successfully processed: ${candidateName}`);
+          
+        } catch (error) {
+          console.error(`[Bulk Upload] Failed to process file ${file.originalname}:`, error);
+          
+          results.push({
+            status: 'error',
+            filename: file.originalname,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+
+      console.log(`[Bulk Upload] Completed: ${successCount} successful, ${errorCount} failed`);
+
+      res.json({
+        success: true,
+        processed: files.length,
+        successful: successCount,
+        failed: errorCount,
+        results: results,
+      });
+
+    } catch (error) {
+      console.error("[Bulk Upload] Bulk upload failed:", error);
+      res.status(500).json({ 
+        error: "Bulk upload failed", 
+        details: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
   app.put("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const candidate = await storage.updateCandidate(req.params.id, req.body);
@@ -594,6 +809,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Object upload - Generate presigned upload URL
+  app.post("/api/objects/upload", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { candidateId, filename } = req.body;
+
+      if (!candidateId || !filename) {
+        return res.status(400).json({ 
+          error: "candidateId and filename are required" 
+        });
+      }
+
+      // 验证候选人是否存在
+      const candidate = await storage.getCandidate(candidateId);
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // 生成预签名上传 URL
+      const uploadUrl = await supabaseStorageService.createPresignedUploadUrl(
+        candidateId,
+        filename
+      );
+
+      res.json({
+        method: "PUT",
+        url: uploadUrl
+      });
+    } catch (error) {
+      console.error("Error generating upload URL:", error);
+      res.status(500).json({ error: "Failed to generate upload URL" });
+    }
+  });
+
+  // Proxy upload endpoint to bypass CORS issues
+  app.post("/api/objects/proxy-upload", requireAuth, upload.single("file"), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const candidateId = req.headers['x-candidate-id'] as string || req.body.candidateId;
+      if (!candidateId) {
+        return res.status(400).json({ error: "candidateId is required" });
+      }
+
+      // 验证候选人是否存在
+      const candidate = await storage.getCandidate(candidateId);
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      // 验证文件类型和大小
+      if (req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: "Only PDF files are allowed" });
+      }
+
+      if (req.file.size > 10 * 1024 * 1024) { // 10MB
+        return res.status(400).json({ error: "File size must be less than 10MB" });
+      }
+
+      console.log(`[Proxy Upload] Uploading file for candidate ${candidateId}: ${req.file.originalname}`);
+
+      // 删除旧简历文件（如果存在）
+      if (candidate.resumeUrl) {
+        try {
+          console.log(`[Proxy Upload] Deleting old resume: ${candidate.resumeUrl}`);
+          await supabaseStorageService.deleteResume(candidate.resumeUrl);
+          console.log(`[Proxy Upload] Old resume deleted successfully`);
+        } catch (deleteError) {
+          console.warn(`[Proxy Upload] Failed to delete old resume:`, deleteError);
+        }
+      }
+
+      // 直接上传到 Supabase Storage
+      const filePath = await supabaseStorageService.uploadResume(
+        candidateId,
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
+
+      console.log(`[Proxy Upload] File uploaded successfully: ${filePath}`);
+
+      // 更新候选人记录
+      await storage.updateCandidate(candidateId, {
+        resumeUrl: filePath
+      });
+
+      console.log(`[Proxy Upload] Starting AI analysis for file: ${filePath}`);
+
+      // 立即进行AI分析
+      try {
+        const analysisResult = await enhancedResumeParser.parse(
+          req.file.buffer,
+          req.file.mimetype
+        );
+        
+        // 更新候选人信息
+        const updatedCandidate = await storage.updateCandidate(candidateId, {
+          name: candidate.name, // 保持原有名称，避免覆盖
+          resumeUrl: filePath,
+          skills: analysisResult.analysis.skills, // 保持数组格式
+          experience: analysisResult.analysis.experience, // 使用数字格式
+          education: analysisResult.analysis.education,
+          resumeText: analysisResult.text
+        });
+
+        console.log(`[Proxy Upload] AI analysis completed successfully`);
+
+        // 设置CORS头部以支持跨域请求
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Candidate-ID');
+        res.header('Access-Control-Expose-Headers', 'ETag, Content-Length');
+
+        // 返回Uppy期望的格式
+        res.json({
+          uploadURL: `/api/files/${filePath}`,
+          url: `/api/files/${filePath}`,
+          response: {
+            body: {
+              success: true,
+              filePath,
+              analysis: {
+                ...analysisResult,
+                candidate: updatedCandidate
+              },
+              message: "File uploaded and analyzed successfully"
+            }
+          }
+        });
+
+      } catch (analysisError) {
+        console.error(`[Proxy Upload] AI analysis failed:`, analysisError);
+        
+        // 即使分析失败，文件上传仍然成功
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Candidate-ID');
+        res.header('Access-Control-Expose-Headers', 'ETag, Content-Length');
+
+        // 返回Uppy期望的格式
+        res.json({
+          uploadURL: `/api/files/${filePath}`,
+          url: `/api/files/${filePath}`,
+          response: {
+            body: {
+              success: true,
+              filePath,
+              message: "File uploaded successfully, but AI analysis failed",
+              analysisError: "AI analysis failed, please try manual analysis"
+            }
+          }
+        });
+      }
+
+    } catch (error) {
+      console.error("Error in proxy upload:", error);
+      res.status(500).json({ error: "Failed to upload file" });
+    }
+  });
+
   // Resume upload and parsing
   app.post("/api/candidates/:id/resume", requireAuth, upload.single("resume"), async (req: AuthRequest, res) => {
     try {
@@ -616,13 +991,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[Resume Upload] Processing with ${useVision ? 'vision' : 'text'} mode${useTargetedAnalysis ? ' and targeted analysis' : ''} for ${req.file.originalname}`);
 
-      let aiAnalysis;
-      let parsedText: string;
-      let contactInfo;
+      let aiAnalysis: AiResumeAnalysis | undefined;
+      let parsedText = "";
+      let contactInfo: TargetedAnalysis["basicInfo"]["contact"] | undefined;
       let skills: string[] = [];
       let experience = 0;
-      let targetedAnalysis = null;
-      let interviewerBrief = null;
+      let targetedAnalysis: TargetedAnalysis | null = null;
+      let interviewerBrief: string | null = null;
+
+      const runAiResumeAnalysis = async (text: string) => {
+        try {
+          const analysisResult = await aiService.analyzeResume(text);
+          aiAnalysis = analysisResult.analysis;
+
+          await storage.createAiConversation({
+            userId: "system",
+            sessionId: `resume-parse-${req.params.id}`,
+            message: `Analyze resume for candidate ${candidate.name}`,
+            response: JSON.stringify(analysisResult.analysis),
+            modelUsed: analysisResult.model,
+            tokensUsed: analysisResult.usage.totalTokens,
+          });
+        } catch (analysisError) {
+          console.warn('[Resume Upload] AI resume analysis fallback triggered:', analysisError);
+        }
+      };
+
+      try {
+        const baselineParsed = await resumeParserService.parseFile(
+          req.file.buffer,
+          req.file.mimetype
+        );
+
+        parsedText = baselineParsed.text;
+        const baselineContact = resumeParserService.extractContactInfo(parsedText) as
+          | { email?: string; phone?: string; location?: string }
+          | undefined;
+        contactInfo = baselineContact
+          ? {
+              email: baselineContact.email,
+              phone: baselineContact.phone,
+              location: baselineContact.location,
+            }
+          : undefined;
+
+        skills = resumeParserService.extractSkills(parsedText);
+        experience = resumeParserService.extractExperience(parsedText);
+      } catch (parseError) {
+        console.error('[Resume Upload] Failed to parse resume before analysis:', parseError);
+        return res.status(422).json({ error: '无法解析上传的简历，请确认文件未损坏且为 PDF 格式。' });
+      }
 
       // 如果提供了岗位ID，执行针对性分析
       if (useTargetedAnalysis) {
@@ -634,35 +1052,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const jobContext = {
               title: job.title,
               description: job.description,
-              requirements: job.requirements,
-              focusAreas: job.focusAreas || [],
+              requirements: Array.isArray(job.requirements) ? job.requirements : [],
+              focusAreas: Array.isArray(job.focusAreas) ? job.focusAreas : [],
             };
 
-            targetedAnalysis = await targetedResumeAnalyzer.analyzeForPosition(
+            const analysis = await targetedResumeAnalyzer.analyzeForPosition(
               req.file.buffer,
               req.file.mimetype,
               jobContext
             );
 
-            interviewerBrief = targetedResumeAnalyzer.generateInterviewerBrief(targetedAnalysis);
+            targetedAnalysis = analysis;
+            interviewerBrief = targetedResumeAnalyzer.generateInterviewerBrief(analysis);
 
-            // 使用针对性分析结果
+            const focusAreas = Array.isArray(analysis.interviewRecommendations?.focusAreas)
+              ? analysis.interviewRecommendations.focusAreas.map(String)
+              : [];
+
             aiAnalysis = {
-              summary: targetedAnalysis.basicInfo.summary,
-              skills: targetedAnalysis.skillsAssessment.technicalSkills.map(s => s.skill),
-              experience: targetedAnalysis.experienceAnalysis.totalRelevantYears,
-              education: targetedAnalysis.basicInfo.summary,
-              strengths: targetedAnalysis.keyInsights.uniqueSellingPoints,
-              weaknesses: targetedAnalysis.risksAndConcerns.redFlags.map(r => r.concern),
-              recommendations: targetedAnalysis.interviewRecommendations.focusAreas
+              summary: analysis.basicInfo.summary,
+              skills: analysis.skillsAssessment.technicalSkills.map(s => s.skill),
+              experience: analysis.experienceAnalysis.totalRelevantYears,
+              education: analysis.basicInfo.summary,
+              strengths: analysis.keyInsights.uniqueSellingPoints,
+              weaknesses: analysis.risksAndConcerns.redFlags.map(r => r.concern),
+              recommendations: focusAreas,
             };
 
-            skills = aiAnalysis.skills;
-            experience = aiAnalysis.experience;
-            parsedText = targetedAnalysis.basicInfo.summary;
-            contactInfo = targetedAnalysis.basicInfo.contact;
+            skills = aiAnalysis.skills ?? [];
+            experience = aiAnalysis.experience ?? experience;
+            contactInfo = {
+              email: analysis.basicInfo.contact?.email ?? contactInfo?.email,
+              phone: analysis.basicInfo.contact?.phone ?? contactInfo?.phone,
+              location: analysis.basicInfo.contact?.location ?? contactInfo?.location,
+            };
 
-            console.log(`[Resume Upload] Targeted analysis completed with score: ${targetedAnalysis.jobFitAnalysis.overallScore}`);
+            console.log(`[Resume Upload] Targeted analysis completed with score: ${analysis.jobFitAnalysis.overallScore}`);
           }
         } catch (error) {
           console.error(`[Resume Upload] Targeted analysis failed:`, error);
@@ -676,8 +1101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // 使用增强版解析器（GPT-5 多模态）
           const enhanced = await enhancedResumeParser.parse(
             req.file.buffer,
-            req.file.mimetype,
-            true // 使用视觉模式
+            req.file.mimetype
           );
 
           parsedText = enhanced.text;
@@ -688,62 +1112,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           experience = enhanced.analysis.experience;
 
           // 尝试从文本提取联系信息作为补充
-          contactInfo = resumeParserService.extractContactInfo(parsedText);
+          const extractedContact = resumeParserService.extractContactInfo(parsedText) as
+            | { email?: string; phone?: string; location?: string }
+            | undefined;
+          contactInfo = extractedContact
+            ? {
+                email: extractedContact.email,
+                phone: extractedContact.phone,
+                location: extractedContact.location,
+              }
+            : undefined;
 
           console.log(`[Resume Upload] Vision analysis completed successfully`);
         } catch (error) {
           console.error(`[Resume Upload] Vision analysis failed, falling back to text mode:`, error);
 
           // 回退到传统文本分析
-          const parsedResume = await resumeParserService.parseFile(
-            req.file.buffer,
-            req.file.mimetype
-          );
-
-          parsedText = parsedResume.text;
-          contactInfo = resumeParserService.extractContactInfo(parsedText);
+          const fallbackContact = resumeParserService.extractContactInfo(parsedText) as
+            | { email?: string; phone?: string; location?: string }
+            | undefined;
+          contactInfo = fallbackContact
+            ? {
+                email: fallbackContact.email,
+                phone: fallbackContact.phone,
+                location: fallbackContact.location,
+              }
+            : contactInfo;
           skills = resumeParserService.extractSkills(parsedText);
           experience = resumeParserService.extractExperience(parsedText);
 
-          // 修复：正确处理返回值并记录 token
-          const analysisResult = await aiService.analyzeResume(parsedText);
-          aiAnalysis = analysisResult.analysis;
-
-          // 记录 token 使用
-          await storage.createAiConversation({
-            userId: "system",
-            sessionId: `resume-parse-${req.params.id}`,
-            message: `Analyze resume for candidate ${candidate.name}`,
-            response: JSON.stringify(aiAnalysis),
-            modelUsed: analysisResult.model,
-            tokensUsed: analysisResult.usage.totalTokens,
-          });
+          await runAiResumeAnalysis(parsedText);
         }
       } else {
-        // 使用传统文本分析
-        const parsedResume = await resumeParserService.parseFile(
-          req.file.buffer,
-          req.file.mimetype
-        );
-
-        parsedText = parsedResume.text;
-        contactInfo = resumeParserService.extractContactInfo(parsedText);
-        skills = resumeParserService.extractSkills(parsedText);
-        experience = resumeParserService.extractExperience(parsedText);
-
-        // 修复：正确处理返回值并记录 token
-        const analysisResult = await aiService.analyzeResume(parsedText);
-        aiAnalysis = analysisResult.analysis;
-
-        // 记录 token 使用
-        await storage.createAiConversation({
-          userId: "system",
-          sessionId: `resume-parse-${req.params.id}`,
-          message: `Analyze resume for candidate ${candidate.name}`,
-          response: JSON.stringify(aiAnalysis),
-          modelUsed: analysisResult.model,
-          tokensUsed: analysisResult.usage.totalTokens,
-        });
+        await runAiResumeAnalysis(parsedText);
       }
 
       }
@@ -776,14 +1177,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // 继续处理，但记录错误
       }
 
+      const resolvedAnalysis: AiResumeAnalysis = aiAnalysis ?? {
+        summary: "",
+        skills,
+        experience,
+        education: candidate.education || "",
+        strengths: [],
+        weaknesses: [],
+        recommendations: [],
+      };
+      aiAnalysis = resolvedAnalysis;
+
       // Update candidate with parsed information
       const updatedCandidate = await storage.updateCandidate(req.params.id, {
         resumeText: parsedText,
         resumeUrl: resumeFilePath, // 添加简历文件路径
-        skills: skills.length > 0 ? skills : aiAnalysis.skills,
-        experience: experience > 0 ? experience : aiAnalysis.experience,
-        aiSummary: interviewerBrief || aiAnalysis.summary,  // 优先使用面试官简报
-        name: contactInfo?.name || candidate.name,
+        skills: skills.length > 0 ? skills : resolvedAnalysis.skills,
+        experience: experience > 0 ? experience : resolvedAnalysis.experience,
+        aiSummary: interviewerBrief || resolvedAnalysis.summary,
+        name: candidate.name,
         email: contactInfo?.email || candidate.email,
         phone: contactInfo?.phone || candidate.phone,
       });
@@ -801,6 +1213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           education: candidate.education || "",
           strengths: aiAnalysis.strengths || [],
           weaknesses: aiAnalysis.weaknesses || [],
+          recommendations: aiAnalysis.recommendations || [],
         };
 
         initialProfile = await candidateProfileService.buildInitialProfile(
@@ -814,6 +1227,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[Resume Upload] Failed to auto-generate profile:`, error);
       }
 
+      const targetedAnalysisResponse = targetedAnalysis
+        ? {
+            overallScore: targetedAnalysis.jobFitAnalysis.overallScore,
+            matchedRequirements: targetedAnalysis.jobFitAnalysis.matchedRequirements,
+            missingRequirements: targetedAnalysis.jobFitAnalysis.missingRequirements,
+            keyInsights: targetedAnalysis.keyInsights,
+            interviewRecommendations: targetedAnalysis.interviewRecommendations,
+            risksAndConcerns: targetedAnalysis.risksAndConcerns,
+            interviewerBrief,
+          }
+        : null;
+
       res.json({
         candidate: updatedCandidate,
         analysis: aiAnalysis,
@@ -823,16 +1248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           experience,
           metadata: { analysisMode: targetedAnalysis ? 'targeted' : (useVision ? 'vision' : 'text') },
         },
-        // 如果有针对性分析，包含详细结果
-        targetedAnalysis: targetedAnalysis ? {
-          overallScore: targetedAnalysis.jobFitAnalysis.overallScore,
-          matchedRequirements: targetedAnalysis.jobFitAnalysis.matchedRequirements,
-          missingRequirements: targetedAnalysis.jobFitAnalysis.missingRequirements,
-          keyInsights: targetedAnalysis.keyInsights,
-          interviewRecommendations: targetedAnalysis.interviewRecommendations,
-          risksAndConcerns: targetedAnalysis.risksAndConcerns,
-          interviewerBrief: interviewerBrief,
-        } : null,
+        targetedAnalysis: targetedAnalysisResponse,
         profile: initialProfile ? {
           id: initialProfile.id,
           version: initialProfile.version,
@@ -854,8 +1270,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Candidate not found" });
       }
 
-      // 权限检查：只有管理员或候选人创建者可以下载简历
-      if (req.user?.role !== 'admin' && candidate.createdBy !== req.user?.id) {
+      // 权限检查：仅允许管理员访问简历下载
+      if (req.user?.role !== 'admin') {
         return res.status(403).json({ error: "Forbidden: You don't have permission to access this resume" });
       }
 
@@ -874,6 +1290,257 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting resume download URL:", error);
       res.status(500).json({ error: "Failed to get resume download URL" });
+    }
+  });
+
+  // 分析已上传的简历文件（通过文件路径）
+  app.post("/api/candidates/:id/analyze-uploaded-resume", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { filePath, jobId } = req.body;
+
+      if (!filePath) {
+        return res.status(400).json({ error: "File path is required" });
+      }
+
+      const candidate = await storage.getCandidate(req.params.id);
+      if (!candidate) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      console.log(`[Resume Analysis] Starting analysis for uploaded file: ${filePath}`);
+
+      // 从 Supabase Storage 下载文件
+      const fileBuffer = await supabaseStorageService.downloadResume(filePath);
+      
+      // 从文件路径推断 MIME 类型
+      const mimeType = filePath.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
+      const originalname = filePath.split('/').pop() || 'resume.pdf';
+
+      // 检查是否提供了岗位ID用于针对性分析
+      const useTargetedAnalysis = !!jobId;
+
+      // 检查是否应该使用视觉分析（PDF 文件且启用视觉模式）
+      const useVision = mimeType === "application/pdf" &&
+                        process.env.ENABLE_VISION_PARSING !== "false";
+
+      console.log(`[Resume Analysis] Processing with ${useVision ? 'vision' : 'text'} mode${useTargetedAnalysis ? ' and targeted analysis' : ''} for ${originalname}`);
+
+      let aiAnalysis: AiResumeAnalysis | undefined;
+      let parsedText = "";
+      let contactInfo: TargetedAnalysis["basicInfo"]["contact"] | undefined;
+      let skills: string[] = [];
+      let experience = 0;
+      let targetedAnalysis: TargetedAnalysis | null = null;
+      let interviewerBrief: string | null = null;
+
+      const runAiResumeAnalysis = async (text: string) => {
+        try {
+          const analysisResult = await aiService.analyzeResume(text);
+          aiAnalysis = analysisResult.analysis;
+          console.log(`[Resume Analysis] AI analysis completed successfully`);
+        } catch (error) {
+          console.error(`[Resume Analysis] AI analysis failed:`, error);
+          throw error;
+        }
+      };
+
+      // 基础解析
+      try {
+        const baselineParsed = await resumeParserService.parseFile(
+          fileBuffer,
+          mimeType
+        );
+
+        parsedText = baselineParsed.text;
+        const baselineContact = resumeParserService.extractContactInfo(parsedText) as
+          | { email?: string; phone?: string; location?: string }
+          | undefined;
+        contactInfo = baselineContact
+          ? {
+              email: baselineContact.email,
+              phone: baselineContact.phone,
+              location: baselineContact.location,
+            }
+          : undefined;
+
+        skills = resumeParserService.extractSkills(parsedText);
+        experience = resumeParserService.extractExperience(parsedText);
+      } catch (parseError) {
+        console.error('[Resume Analysis] Failed to parse resume before analysis:', parseError);
+        return res.status(422).json({ error: '无法解析上传的简历，请确认文件未损坏且为 PDF 格式。' });
+      }
+
+      // 如果提供了岗位ID，执行针对性分析
+      if (useTargetedAnalysis) {
+        try {
+          const job = await storage.getJob(jobId);
+          if (job) {
+            console.log(`[Resume Analysis] Performing targeted analysis for job: ${job.title}`);
+
+            const jobContext = {
+              title: job.title,
+              description: job.description,
+              requirements: Array.isArray(job.requirements) ? job.requirements : [],
+              focusAreas: Array.isArray(job.focusAreas) ? job.focusAreas : [],
+            };
+
+            const analysis = await targetedResumeAnalyzer.analyzeForPosition(
+              fileBuffer,
+              mimeType,
+              jobContext
+            );
+
+            targetedAnalysis = analysis;
+            interviewerBrief = targetedResumeAnalyzer.generateInterviewerBrief(analysis);
+
+            // 合并技能信息
+            const targetedSkills = analysis.skillsAssessment.technicalSkills.map(s => s.skill);
+            skills = Array.from(new Set([...skills, ...targetedSkills]));
+            experience = analysis.experienceAnalysis.totalRelevantYears || experience;
+
+            console.log(`[Resume Analysis] Targeted analysis completed with score: ${analysis.jobFitAnalysis.overallScore}`);
+          }
+        } catch (error) {
+          console.error(`[Resume Analysis] Targeted analysis failed:`, error);
+        }
+      }
+
+      // 如果没有进行针对性分析，使用原有的分析流程
+      if (!targetedAnalysis) {
+        if (useVision) {
+          try {
+            // 使用增强版解析器（GPT-5 多模态）
+            const enhanced = await enhancedResumeParser.parse(
+              fileBuffer,
+              mimeType
+            );
+
+            parsedText = enhanced.text;
+            aiAnalysis = enhanced.analysis;
+
+            // 从视觉分析中提取信息
+            skills = enhanced.analysis.skills;
+            experience = enhanced.analysis.experience;
+
+            // 尝试从文本提取联系信息作为补充
+            const extractedContact = resumeParserService.extractContactInfo(parsedText) as
+              | { email?: string; phone?: string; location?: string }
+              | undefined;
+            contactInfo = extractedContact
+              ? {
+                  email: extractedContact.email,
+                  phone: extractedContact.phone,
+                  location: extractedContact.location,
+                }
+              : undefined;
+
+            console.log(`[Resume Analysis] Vision analysis completed successfully`);
+          } catch (error) {
+            console.error(`[Resume Analysis] Vision analysis failed, falling back to text mode:`, error);
+
+            // 回退到传统文本分析
+            const fallbackContact = resumeParserService.extractContactInfo(parsedText) as
+              | { email?: string; phone?: string; location?: string }
+              | undefined;
+            contactInfo = fallbackContact
+              ? {
+                  email: fallbackContact.email,
+                  phone: fallbackContact.phone,
+                  location: fallbackContact.location,
+                }
+              : contactInfo;
+            skills = resumeParserService.extractSkills(parsedText);
+            experience = resumeParserService.extractExperience(parsedText);
+
+            await runAiResumeAnalysis(parsedText);
+          }
+        } else {
+          await runAiResumeAnalysis(parsedText);
+        }
+      }
+
+      const resolvedAnalysis: AiResumeAnalysis = aiAnalysis ?? {
+        summary: "",
+        skills,
+        experience,
+        education: candidate.education || "",
+        strengths: [],
+        weaknesses: [],
+        recommendations: [],
+      };
+      aiAnalysis = resolvedAnalysis;
+
+      // Update candidate with parsed information
+      const updatedCandidate = await storage.updateCandidate(req.params.id, {
+        resumeText: parsedText,
+        resumeUrl: filePath, // 更新简历文件路径
+        skills: skills.length > 0 ? skills : resolvedAnalysis.skills,
+        experience: experience > 0 ? experience : resolvedAnalysis.experience,
+        aiSummary: interviewerBrief || resolvedAnalysis.summary,
+        name: candidate.name,
+        email: contactInfo?.email || candidate.email,
+        phone: contactInfo?.phone || candidate.phone,
+      });
+
+      let initialProfile = null;
+      let profileError = null;
+
+      try {
+        console.log(`[Resume Analysis] Auto-generating initial profile for candidate ${req.params.id}`);
+
+        const resumeAnalysisForProfile = {
+          summary: aiAnalysis.summary,
+          skills: skills.length > 0 ? skills : aiAnalysis.skills,
+          experience: experience > 0 ? experience : aiAnalysis.experience,
+          education: candidate.education || "",
+          strengths: aiAnalysis.strengths || [],
+          weaknesses: aiAnalysis.weaknesses || [],
+          recommendations: aiAnalysis.recommendations || [],
+        };
+
+        initialProfile = await candidateProfileService.buildInitialProfile(
+          req.params.id,
+          resumeAnalysisForProfile
+        );
+
+        console.log(`[Resume Analysis] Initial profile v${initialProfile.version} created successfully`);
+      } catch (error) {
+        profileError = error instanceof Error ? error.message : "Failed to generate profile";
+        console.error(`[Resume Analysis] Failed to auto-generate profile:`, error);
+      }
+
+      const targetedAnalysisResponse = targetedAnalysis
+        ? {
+            overallScore: targetedAnalysis.jobFitAnalysis.overallScore,
+            matchedRequirements: targetedAnalysis.jobFitAnalysis.matchedRequirements,
+            missingRequirements: targetedAnalysis.jobFitAnalysis.missingRequirements,
+            keyInsights: targetedAnalysis.keyInsights,
+            interviewRecommendations: targetedAnalysis.interviewRecommendations,
+            risksAndConcerns: targetedAnalysis.risksAndConcerns,
+            interviewerBrief,
+          }
+        : null;
+
+      res.json({
+        candidate: updatedCandidate,
+        analysis: aiAnalysis,
+        parsedData: {
+          contactInfo,
+          skills,
+          experience,
+          metadata: { analysisMode: targetedAnalysis ? 'targeted' : (useVision ? 'vision' : 'text') },
+        },
+        targetedAnalysis: targetedAnalysisResponse,
+        profile: initialProfile ? {
+          id: initialProfile.id,
+          version: initialProfile.version,
+          generated: true,
+        } : null,
+        profileError: profileError,
+      });
+    } catch (error) {
+      console.error("Error analyzing uploaded resume:", error);
+      res.status(500).json({ error: "Failed to analyze uploaded resume" });
     }
   });
 
@@ -902,12 +1569,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[Targeted Analysis] Starting for candidate ${candidate.name} and job ${job.title}`);
 
+      let parsedText = "";
+      let baselineSkills: string[] = [];
+      let baselineExperience = candidate.experience ?? 0;
+      let baselineContact = resumeParserService.extractContactInfo(candidate.resumeText ?? "") || undefined;
+
+      try {
+        const parsedResume = await resumeParserService.parseFile(req.file.buffer, req.file.mimetype);
+        parsedText = parsedResume.text;
+        baselineSkills = resumeParserService.extractSkills(parsedText);
+        baselineExperience = resumeParserService.extractExperience(parsedText) || baselineExperience;
+        const contact = resumeParserService.extractContactInfo(parsedText);
+        baselineContact = contact ?? baselineContact;
+      } catch (parseError) {
+        console.error('[Targeted Analysis] Failed to parse resume for baseline extraction:', parseError);
+        return res.status(422).json({ error: '无法解析上传的简历，请确认文件未损坏且为 PDF 格式。' });
+      }
+
       // 构建岗位上下文
       const jobContext = {
         title: job.title,
         description: job.description,
-        requirements: job.requirements,
-        focusAreas: job.focusAreas || [], // 假设我们可以在 job 表中添加这个字段
+        requirements: Array.isArray(job.requirements) ? job.requirements : [],
+        focusAreas: Array.isArray(job.focusAreas) ? job.focusAreas : [],
       };
 
       // 执行针对性分析
@@ -921,12 +1605,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const interviewerBrief = targetedResumeAnalyzer.generateInterviewerBrief(targetedAnalysis);
 
       // 更新候选人信息
+      const mergedSkills = Array.from(new Set([
+        ...baselineSkills,
+        ...targetedAnalysis.skillsAssessment.technicalSkills.map(s => s.skill)
+      ]));
+
       const updatedCandidate = await storage.updateCandidate(req.params.id, {
-        resumeText: targetedAnalysis.basicInfo.summary,
-        skills: targetedAnalysis.skillsAssessment.technicalSkills.map(s => s.skill),
-        experience: targetedAnalysis.experienceAnalysis.totalRelevantYears,
+        resumeText: parsedText,
+        skills: mergedSkills,
+        experience: targetedAnalysis.experienceAnalysis.totalRelevantYears || baselineExperience,
         aiSummary: interviewerBrief,
-        targetedAnalysis: JSON.stringify(targetedAnalysis), // 存储完整分析结果
+        targetedAnalysis: targetedAnalysis as unknown as TargetedResumeAnalysis,
+        email: targetedAnalysis.basicInfo.contact?.email || baselineContact?.email || candidate.email,
+        phone: targetedAnalysis.basicInfo.contact?.phone || baselineContact?.phone || candidate.phone,
+        location: targetedAnalysis.basicInfo.contact?.location || candidate.location,
       });
 
       // 如果分析成功，也创建或更新匹配记录
@@ -935,22 +1627,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (existingMatch) {
           await storage.updateJobMatch(existingMatch.id, {
-            score: targetedAnalysis.jobFitAnalysis.overallScore,
-            analysis: JSON.stringify({
+            score: targetedAnalysis.jobFitAnalysis.overallScore.toString(),
+            analysis: {
               targeted: true,
-              ...targetedAnalysis.jobFitAnalysis
-            }),
+              ...targetedAnalysis.jobFitAnalysis,
+            },
           });
         } else {
           await storage.createJobMatch({
             jobId,
             candidateId: req.params.id,
-            score: targetedAnalysis.jobFitAnalysis.overallScore,
+            score: targetedAnalysis.jobFitAnalysis.overallScore.toString(),
             status: "pending",
-            analysis: JSON.stringify({
+            analysis: {
               targeted: true,
-              ...targetedAnalysis.jobFitAnalysis
-            }),
+              ...targetedAnalysis.jobFitAnalysis,
+            },
           });
         }
       }
@@ -1141,22 +1833,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         job = await storage.getJob(jobId);
       }
 
-      // 准备评估数据
-      const assessmentData = {
-        candidateName: candidate.name,
-        stage,
-        resumeSummary: candidate.resumeAnalysis?.summary || "",
-        skills: candidate.resumeAnalysis?.skills || [],
-        experience: candidate.resumeAnalysis?.experience || 0,
-        jobTitle: job?.title,
-        jobDescription: job?.description,
-        jobRequirements: job?.requirements
+      const profileHistory = await storage.getCandidateProfiles(candidateId);
+
+      const cultureInput = {
+        resumeText: candidate.resumeText || candidate.resumeAnalysis?.summary || "",
+        interviewTranscripts: undefined,
+        profileHistory,
+        behavioralResponses: undefined,
       };
 
-      // 并行执行文化和领导力评估
+      const leadershipInput = {
+        resumeText: candidate.resumeText || candidate.resumeAnalysis?.summary || "",
+        interviewTranscripts: undefined,
+        profileHistory,
+        managementExperience: undefined,
+        achievements: candidate.resumeAnalysis?.strengths || [],
+      };
+
       const [cultureAssessment, leadershipAssessment] = await Promise.all([
-        organizationalFitService.assessCultureFit(assessmentData, stage),
-        organizationalFitService.assessLeadershipFramework(assessmentData, stage)
+        organizationalFitService.assessCultureFit(cultureInput, stage),
+        organizationalFitService.assessLeadership(leadershipInput, stage),
       ]);
 
       res.json({
@@ -1185,17 +1881,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No profiles found for candidate" });
       }
 
-      const cultureHistory = [];
-      const leadershipHistory = [];
+      const cultureHistory: CultureFitAssessment[] = [];
+      const leadershipHistory: LeadershipAssessment[] = [];
 
       for (const profile of profiles) {
         const profileData = profile.profileData as any;
         if (profileData?.organizationalFit) {
           if (profileData.organizationalFit.cultureAssessment) {
-            cultureHistory.push(profileData.organizationalFit.cultureAssessment);
+            cultureHistory.push(profileData.organizationalFit.cultureAssessment as CultureFitAssessment);
           }
           if (profileData.organizationalFit.leadershipAssessment) {
-            leadershipHistory.push(profileData.organizationalFit.leadershipAssessment);
+            leadershipHistory.push(profileData.organizationalFit.leadershipAssessment as LeadershipAssessment);
           }
         }
       }
@@ -1541,10 +2237,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           console.log(`[Interview Update] Auto-updating profile for candidate ${interview.candidateId} after interview ${interview.id}`);
 
-          updatedProfile = await candidateProfileService.updateProfileFromInterview(
+          updatedProfile = await candidateProfileService.updateProfileWithInterview(
             interview.candidateId,
-            interview.id,
-            interview.jobId || undefined
+            interview.id
           );
 
           console.log(`[Interview Update] Profile updated to v${updatedProfile.version} (stage: ${updatedProfile.stage})`);
@@ -1961,7 +2656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch candidate information for each decision
       const decisionsWithCandidates = await Promise.all(
         decisions.map(async (decision) => {
-          const candidate = await storage.getCandidateById(decision.candidateId);
+          const candidate = await storage.getCandidate(decision.candidateId);
           return {
             ...decision,
             candidate: candidate ? {
@@ -2196,10 +2891,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(activity);
     } catch (error) {
       console.error("Error creating activity log:", error);
-      if (error.name === 'ZodError') {
+      if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid request data", details: error.errors });
       }
-      res.status(500).json({ error: "Failed to create activity log" });
+      res.status(500).json({
+        error: "Failed to create activity log",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2215,7 +2913,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(notifications);
     } catch (error) {
       console.error("Error fetching notifications:", error);
-      res.status(500).json({ error: "Failed to fetch notifications" });
+      res.status(500).json({
+        error: "Failed to fetch notifications",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2236,10 +2937,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(notification);
     } catch (error) {
       console.error("Error creating notification:", error);
-      if (error.name === 'ZodError') {
+      if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid request data", details: error.errors });
       }
-      res.status(500).json({ error: "Failed to create notification" });
+      res.status(500).json({
+        error: "Failed to create notification",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2252,7 +2956,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       console.error("Error marking notification as read:", error);
-      res.status(500).json({ error: "Failed to mark notification as read" });
+      res.status(500).json({
+        error: "Failed to mark notification as read",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2263,7 +2970,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(onlineUsers);
     } catch (error) {
       console.error("Error fetching online users:", error);
-      res.status(500).json({ error: "Failed to fetch online users" });
+      res.status(500).json({
+        error: "Failed to fetch online users",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2275,7 +2985,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(comments);
     } catch (error) {
       console.error("Error fetching comments:", error);
-      res.status(500).json({ error: "Failed to fetch comments" });
+      res.status(500).json({
+        error: "Failed to fetch comments",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
@@ -2296,10 +3009,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(comment);
     } catch (error) {
       console.error("Error creating comment:", error);
-      if (error.name === 'ZodError') {
+      if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid request data", details: error.errors });
       }
-      res.status(500).json({ error: "Failed to create comment" });
+      res.status(500).json({
+        error: "Failed to create comment",
+        ...(error instanceof Error ? { details: error.message } : {}),
+      });
     }
   });
 
