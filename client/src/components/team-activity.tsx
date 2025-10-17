@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWebSocketContext } from "@/contexts/websocket-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   Users, 
   UserPlus, 
@@ -52,27 +54,48 @@ const actionColors: Record<string, string> = {
 export function TeamActivity() {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const queryClient = useQueryClient();
+  const { user, loading } = useAuth();
 
-  const { data: activityData } = useQuery<ActivityLog[]>({
-    queryKey: ["/api/activity"],
+  const { data: activityData, error } = useQuery<ActivityLog[]>({
+    queryKey: ["activity"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/activity");
+      return response.json();
+    },
+    enabled: !!user && !loading, // 只有在用户已认证时才执行查询
+    staleTime: 60 * 1000, // 1分钟缓存时间
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => {
+      // 对于认证错误不重试
+      if (error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   const { isConnected, subscribe } = useWebSocketContext();
   
   // Handle real-time activity updates
   useEffect(() => {
+    if (!user) return;
+    
     const unsubscribe = subscribe((message: any) => {
       if (message.type === 'team_activity') {
         const newActivity = message.payload;
-        setActivities(prev => [newActivity, ...prev.slice(0, 49)]); // Keep last 50 activities
         
-        // Invalidate activity query to refresh
-        queryClient.invalidateQueries({ queryKey: ["/api/activity"] });
+        // 使用 setQueryData 直接更新缓存，而不是失效查询
+        queryClient.setQueryData(["activity"], (oldData: ActivityLog[] | undefined) => {
+          if (!oldData) return [newActivity];
+          return [newActivity, ...oldData.slice(0, 49)]; // Keep last 50 activities
+        });
+        
+        setActivities(prev => [newActivity, ...prev.slice(0, 49)]);
       }
     });
     
     return unsubscribe;
-  }, [subscribe, queryClient]);
+  }, [subscribe, queryClient, user]);
 
   useEffect(() => {
     if (activityData) {

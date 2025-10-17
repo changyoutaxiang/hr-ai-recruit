@@ -19,6 +19,9 @@ import Templates from "@/pages/templates";
 import InterviewAssistantPage from "@/pages/interview-assistant";
 import InterviewPreparePage from "@/pages/interview-prepare";
 import InterviewDetail from "@/pages/interview-detail";
+import Reports from "@/pages/reports";
+import FunnelPage from "@/pages/funnel";
+import PreferencesPage from "@/pages/preferences";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -74,6 +77,21 @@ function Router() {
       <Route path="/templates">
         <ProtectedRoute allowedRoles={['admin', 'recruitment_lead']}>
           <Templates />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/reports">
+        <ProtectedRoute>
+          <Reports />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/funnel">
+        <ProtectedRoute>
+          <FunnelPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/preferences">
+        <ProtectedRoute>
+          <PreferencesPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

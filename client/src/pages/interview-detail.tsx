@@ -324,6 +324,33 @@ export default function InterviewDetailPage() {
       TRANSCRIPTION_METHOD_MAP[interview.transcriptionMethod] : null;
   }, [interview.transcriptionMethod]);
 
+  const interviewRating = typeof interview.rating === "number" ? interview.rating : null;
+  const aiKeyFindings = Array.isArray(interview.aiKeyFindings)
+    ? (interview.aiKeyFindings as string[])
+    : [];
+  const aiConcernAreas = Array.isArray(interview.aiConcernAreas)
+    ? (interview.aiConcernAreas as string[])
+    : [];
+
+  const briefInterviewType = useMemo<"technical" | "behavioral" | "cultural" | "final">(() => {
+    switch (interview.type) {
+      case "technical":
+        return "technical";
+      case "final":
+        return "final";
+      case "cultural":
+        return "cultural";
+      case "behavioral":
+      case "screening":
+      case "phone":
+      case "video":
+      case "in-person":
+      case "onsite":
+      default:
+        return "behavioral";
+    }
+  }, [interview.type]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
@@ -544,7 +571,7 @@ export default function InterviewDetailPage() {
                   </Card>
 
                   {/* 面试评分（如果有） */}
-                  {interview.rating && (
+                  {interviewRating !== null && (
                     <Card>
                       <CardHeader>
                         <CardTitle>面试评分</CardTitle>
@@ -552,13 +579,13 @@ export default function InterviewDetailPage() {
                       <CardContent className="space-y-4">
                         <div className="flex items-center justify-center py-4">
                           <div className="text-center">
-                            <div className="text-4xl font-bold mb-2">{interview.rating}/5</div>
+                            <div className="text-4xl font-bold mb-2">{interviewRating}/5</div>
                             <div className="flex items-center gap-1 justify-center">
                               {[...Array(5)].map((_, i) => (
                                 <Star
                                   key={i}
                                   className={`h-5 w-5 ${
-                                    i < interview.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                                    i < interviewRating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
                                   }`}
                                 />
                               ))}
@@ -589,7 +616,7 @@ export default function InterviewDetailPage() {
                   )}
 
                   {/* AI 关键发现 */}
-                  {interview.aiKeyFindings && interview.aiKeyFindings.length > 0 && (
+                  {aiKeyFindings.length > 0 && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -599,7 +626,7 @@ export default function InterviewDetailPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
-                          {interview.aiKeyFindings.map((finding, i) => (
+                          {aiKeyFindings.map((finding, i) => (
                             <div key={i} className="flex items-start gap-2">
                               <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
                               <span className="text-sm">{finding}</span>
@@ -611,7 +638,7 @@ export default function InterviewDetailPage() {
                   )}
 
                   {/* AI 关注领域 */}
-                  {interview.aiConcernAreas && interview.aiConcernAreas.length > 0 && (
+                  {aiConcernAreas.length > 0 && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -621,7 +648,7 @@ export default function InterviewDetailPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
-                          {interview.aiConcernAreas.map((concern, i) => (
+                          {aiConcernAreas.map((concern, i) => (
                             <div key={i} className="flex items-start gap-2">
                               <Info className="h-4 w-4 text-orange-500 mt-0.5" />
                               <span className="text-sm">{concern}</span>
@@ -763,7 +790,7 @@ export default function InterviewDetailPage() {
                       profile={latestProfile!}
                       jobTitle={job?.title}
                       interviewRound={interview.round}
-                      interviewType={interview.type as "screening" | "technical" | "behavioral" | "final" | "onsite"}
+                      interviewType={briefInterviewType}
                     />
                   ) : (
                     <Card>

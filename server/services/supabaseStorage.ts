@@ -35,6 +35,7 @@ export class SupabaseStorageService {
    */
   async ensureBucketExists(): Promise<void> {
     try {
+      console.log('Listing existing buckets...');
       const { data: buckets, error: listError } = await supabase.storage.listBuckets();
 
       if (listError) {
@@ -42,7 +43,9 @@ export class SupabaseStorageService {
         return;
       }
 
+      console.log('Existing buckets:', buckets?.map(b => b.name));
       const bucketExists = buckets?.some(bucket => bucket.name === RESUME_BUCKET);
+      console.log(`Bucket ${RESUME_BUCKET} exists:`, bucketExists);
 
       if (!bucketExists) {
         console.log(`Creating ${RESUME_BUCKET} bucket...`);
@@ -50,9 +53,7 @@ export class SupabaseStorageService {
           public: false, // 私有 bucket，需要签名 URL 访问
           fileSizeLimit: 10485760, // 10MB 限制
           allowedMimeTypes: [
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            'application/pdf'
           ]
         });
 
@@ -61,6 +62,8 @@ export class SupabaseStorageService {
         } else {
           console.log(`${RESUME_BUCKET} bucket created successfully`);
         }
+      } else {
+        console.log(`${RESUME_BUCKET} bucket already exists`);
       }
     } catch (error) {
       console.error('Error ensuring bucket exists:', error);
@@ -83,14 +86,12 @@ export class SupabaseStorageService {
   ): Promise<string> {
     // 二次校验：文件类型
     const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/pdf'
     ];
 
     if (!allowedTypes.includes(contentType)) {
       throw new Error(
-        `Invalid file type: ${contentType}. Only PDF, DOC, and DOCX files are allowed.`
+        `Invalid file type: ${contentType}. Only PDF files are allowed.`
       );
     }
 
@@ -194,6 +195,64 @@ export class SupabaseStorageService {
   }
 
   /**
+   * 生成预签名上传 URL
+   * @param candidateId 候选人 ID
+   * @param filename 文件名
+   * @param expiresIn 签名 URL 有效期（秒），默认 1 小时
+   * @returns 预签名上传 URL
+   */
+  async createPresignedUploadUrl(
+    candidateId: string,
+    filename: string,
+    expiresIn: number = 3600
+  ): Promise<string> {
+    // 生成文件路径
+    const timestamp = Date.now();
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const filePath = `${candidateId}/${timestamp}_${sanitizedFilename}`;
+
+    // 创建预签名上传 URL
+    const { data, error } = await supabase.storage
+      .from(RESUME_BUCKET)
+      .createSignedUploadUrl(filePath);
+
+    if (error) {
+      console.error('Error creating presigned upload URL:', error);
+      throw new Error(`Failed to create presigned upload URL: ${error.message}`);
+    }
+
+    if (!data?.signedUrl) {
+      throw new Error('No presigned upload URL returned from Supabase');
+    }
+
+    return data.signedUrl;
+  }
+
+  /**
+   * 下载简历文件内容
+   * @param filePath 文件在 storage 中的路径
+   * @returns 文件二进制数据
+   */
+  async downloadResume(filePath: string): Promise<Buffer> {
+    const { data, error } = await supabase.storage
+      .from(RESUME_BUCKET)
+      .download(filePath);
+
+    if (error) {
+      console.error('Error downloading file:', error);
+      throw new Error(`Failed to download file: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new Error('No file data returned from Supabase');
+    }
+
+    // 将 Blob 转换为 Buffer
+    const arrayBuffer = await data.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  /**
    * 获取文件的公共 URL（仅适用于公共 bucket）
    * 注意：当前配置为私有 bucket，应使用 getResumeSignedUrl
    * @param filePath 文件路径
@@ -212,6 +271,9 @@ export class SupabaseStorageService {
 export const supabaseStorageService = new SupabaseStorageService();
 
 // 服务器启动时确保 bucket 存在
-supabaseStorageService.ensureBucketExists().catch(err => {
+console.log('Initializing Supabase Storage Service...');
+supabaseStorageService.ensureBucketExists().then(() => {
+  console.log('Bucket initialization completed');
+}).catch(err => {
   console.error('Failed to ensure bucket exists:', err);
 });

@@ -188,6 +188,7 @@ npm run dev
 - **前端开发服务器**: http://localhost:5173 (Vite Hot Reload)
 - **后端 API 服务器**: http://localhost:5000
 - **生产环境**: http://localhost:5000 (前端打包后由 Express 提供)
+如需单独调试某一端，可使用 `npm run dev:frontend` 或 `npm run dev:backend`。
 
 #### 6. 创建测试用户（可选）
 
@@ -429,6 +430,8 @@ hr-ai-recruit/
 ```bash
 # 开发
 npm run dev          # 启动开发服务器 (前端 + 后端)
+npm run dev:backend  # 仅启动后端开发服务器
+npm run dev:frontend # 仅启动前端开发服务器
 npm run check        # TypeScript 类型检查
 
 # 构建

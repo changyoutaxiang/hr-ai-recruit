@@ -5,7 +5,13 @@ import type { Candidate, Job, Interview, CandidateProfile, InterviewPreparation 
 import type { ResumeAnalysis } from "./aiService";
 import { organizationalFitService, type CultureFitAssessment, type LeadershipAssessment } from "./organizationalFitService";
 import { evidenceService } from "./evidenceService";
-import type { Evidence, EvidenceChain, ClaimType, EvidenceSource, EvidenceStrength } from "@shared/types/evidence";
+import {
+  EvidenceSource,
+  EvidenceStrength,
+  ClaimType,
+  type Evidence,
+  type EvidenceChain,
+} from "@shared/types/evidence";
 import { aiTokenTracker } from "./aiTokenTrackerService";
 import {
   candidateContextSchema,
@@ -20,6 +26,22 @@ const CONFIG = {
   DEFAULT_OVERALL_SCORE: 70,
   AI_TIMEOUT_MS: 45000,
   MAX_RETRIES: 2,
+} as const;
+
+/**
+ * ✨ Token 限制配置
+ * 用于控制AI调用成本和防止超限
+ */
+const TOKEN_LIMITS = {
+  MAX_TOTAL_TOKENS: 30000,        // 单次调用最大 token (约22500汉字)
+  MAX_HISTORY_TOKENS: 5000,       // 历史面试记录最大 token
+  MAX_EVIDENCE_TOKENS: 3000,      // 证据摘要最大 token
+  MAX_TRANSCRIPTION_TOKENS: 2000, // 面试转录最大 token
+  MAX_FEEDBACK_TOKENS: 800,       // 面试官反馈最大 token
+  MAX_NOTES_TOKENS: 500,          // 面试官笔记最大 token
+  MAX_JOB_DESC_TOKENS: 500,       // 职位描述最大 token
+  MAX_SUMMARY_TOKENS: 300,        // AI总结最大 token
+  CHARS_PER_TOKEN: 2.5,           // 中文约2.5字符 = 1 token (估算)
 } as const;
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -218,7 +240,7 @@ export class CandidateProfileService {
     const profileData = await this.generateInitialProfileWithAI(
       candidate,
       resumeAnalysis,
-      job,
+      job || undefined,
       resumeEvidence
     );
 
@@ -229,7 +251,7 @@ export class CandidateProfileService {
         "resume",
         resumeAnalysis,
         undefined,
-        job
+        job ?? undefined
       );
       if (orgFitData) {
         profileData.profileData.organizationalFit = orgFitData;
@@ -446,7 +468,7 @@ export class CandidateProfileService {
         stage as "interview_1" | "interview_2" | "final_evaluation",
         undefined,
         interview,
-        job,
+        job ?? undefined,
         currentProfile.profileData as ProfileData
       );
 
@@ -544,17 +566,23 @@ export class CandidateProfileService {
       strengths: ["扎实的前端基础", "优秀的问题解决能力"],
       concerns: ["频繁跳槽", "项目经验较浅"],
       aiSummary: "候选人具有扎实的前端技术背景，5年工作经验，擅长React生态系统...",
-      evidenceSummary: {
-        totalEvidence: resumeEvidence?.length || 0,
-        strongEvidence: resumeEvidence?.filter(e =>
+      evidenceSummary: (() => {
+        const evidenceList = resumeEvidence ?? [];
+        const strongEvidenceCount = evidenceList.filter(e =>
           e.strength === 'direct' || e.strength === 'strong'
-        ).length || 0,
-        contradictions: 0,
-        averageConfidence: resumeEvidence?.reduce((sum, e) =>
-          sum + e.confidence, 0
-        ) / (resumeEvidence?.length || 1) || 0,
-        mainSources: ["简历"]
-      }
+        ).length;
+        const averageConfidence = evidenceList.length
+          ? evidenceList.reduce((sum, e) => sum + e.confidence, 0) / evidenceList.length
+          : 0;
+
+        return {
+          totalEvidence: evidenceList.length,
+          strongEvidence: strongEvidenceCount,
+          contradictions: 0,
+          averageConfidence,
+          mainSources: ["简历"],
+        };
+      })()
     };
 
     const systemPrompt = `你是一位资深的 HR 专家和人才评估专家。你的任务是基于候选人的简历分析，构建一个全面、深入的候选人画像。
@@ -597,10 +625,15 @@ ${job ? `\n目标职位：${job.title}\n职位要求：${job.requirements ? (job
 - 不足：${resumeAnalysis.weaknesses.map(s => this.sanitizeForPrompt(s)).join(", ")}
 
 证据统计：
-- 共提取 ${resumeEvidence?.length || 0} 条证据
-- 直接证据：${resumeEvidence?.filter(e => e.strength === 'direct').length || 0} 条
-- 强力证据：${resumeEvidence?.filter(e => e.strength === 'strong').length || 0} 条
-- 平均置信度：${(resumeEvidence?.reduce((s, e) => s + e.confidence, 0) / (resumeEvidence?.length || 1) || 0).toFixed(0)}%
+  - 共提取 ${(resumeEvidence ?? []).length} 条证据
+  - 直接证据：${(resumeEvidence ?? []).filter(e => e.strength === 'direct').length} 条
+  - 强力证据：${(resumeEvidence ?? []).filter(e => e.strength === 'strong').length} 条
+  - 平均置信度：${(() => {
+      const list = resumeEvidence ?? [];
+      if (!list.length) return '0';
+      const avg = list.reduce((s, e) => s + e.confidence, 0) / list.length;
+      return avg.toFixed(0);
+    })()}%
 
 ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
 
@@ -662,8 +695,8 @@ ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
     // 3. 检测证据矛盾
     const contradictions = await this.detectEvidenceContradictions(allEvidence);
 
-    // 4. 构建证据摘要
-    const evidenceSummary = this.buildEvidenceSummary(allEvidence, newEvidence || []);
+    // 4. ✨ 构建压缩后的证据摘要
+    const evidenceSummary = this.buildEvidenceSummaryCompact(allEvidence, newEvidence || []);
 
     const systemPrompt = `你是一位资深的 HR 专家和人才评估专家。你的任务是基于候选人的现有画像和最新的面试反馈，更新候选人画像。
 
@@ -688,26 +721,50 @@ ${resumeText ? `\n简历全文：\n${resumeText}` : ""}
     const previousGaps = (currentProfile.gaps as string[]) || [];
     const previousDataSources = (currentProfile.dataSources as string[]) || [];
 
+    // ✨ 使用Token限制处理各个部分
     const transcription = latestInterview.transcription
-      ? this.smartTruncate(this.sanitizeForPrompt(latestInterview.transcription), 2000)
+      ? this.truncateToTokenLimit(
+          this.sanitizeForPrompt(latestInterview.transcription),
+          TOKEN_LIMITS.MAX_TRANSCRIPTION_TOKENS
+        )
       : "";
+
+    // ✨ 压缩历史面试记录
+    const interviewHistory = this.summarizeInterviewHistory(allInterviews, latestInterview);
+
+    // ✨ 压缩职位信息
+    let jobInfo = "";
+    if (job) {
+      const requirements = job.requirements
+        ? (job.requirements as string[]).slice(0, 10).join(', ')  // 最多10个要求
+        : '';
+      const description = this.truncateToTokenLimit(
+        this.sanitizeForPrompt(job.description),
+        TOKEN_LIMITS.MAX_JOB_DESC_TOKENS
+      );
+
+      jobInfo = `\n**目标职位：**
+- 职位：${job.title}
+- 要求：${requirements}
+- 描述：${description}`;
+    }
 
     const userPrompt = `候选人：${this.sanitizeForPrompt(candidate.name)}
 
 **当前画像（第 ${currentProfile.version} 版）：**
 - 阶段：${currentProfile.stage}
 - 综合评分：${currentProfile.overallScore}
-- 已知优势：${previousStrengths.join(", ")}
-- 已知顾虑：${previousConcerns.join(", ")}
-- 信息缺口：${previousGaps.join(", ")}
-- AI 总结：${this.sanitizeForPrompt(currentProfile.aiSummary || "")}
+- 已知优势：${previousStrengths.slice(0, 5).join(", ")}${previousStrengths.length > 5 ? ` 等${previousStrengths.length}项` : ''}
+- 已知顾虑：${previousConcerns.slice(0, 5).join(", ")}${previousConcerns.length > 5 ? ` 等${previousConcerns.length}项` : ''}
+- 信息缺口：${previousGaps.slice(0, 5).join(", ")}${previousGaps.length > 5 ? ` 等${previousGaps.length}项` : ''}
+- AI 总结：${this.truncateToTokenLimit(this.sanitizeForPrompt(currentProfile.aiSummary || ""), TOKEN_LIMITS.MAX_SUMMARY_TOKENS)}
 
 **证据链分析：**
 ${evidenceSummary}
 
 ${contradictions.length > 0 ? `
-**检测到的证据矛盾：**
-${contradictions.map(c => `- ${c.claim}: ${c.description}`).join("\n")}
+**检测到的证据矛盾（共 ${contradictions.length} 个，展示前5个）：**
+${contradictions.slice(0, 5).map(c => `- ${c.claim}: ${c.description}`).join("\n")}
 请在更新画像时明确解决这些矛盾，基于证据强度和来源可信度做出判断。
 ` : ""}
 
@@ -715,20 +772,17 @@ ${contradictions.map(c => `- ${c.claim}: ${c.description}`).join("\n")}
 - 面试类型：${latestInterview.type}
 - 面试时间：${latestInterview.scheduledDate}
 - 面试评分：${latestInterview.rating || "未评分"}/5
-- 面试官反馈：${this.sanitizeForPrompt(latestInterview.feedback || "无")}
-- 面试官笔记：${this.sanitizeForPrompt(latestInterview.interviewerNotes || "无")}
+- 面试官反馈：${this.truncateToTokenLimit(this.sanitizeForPrompt(latestInterview.feedback || "无"), TOKEN_LIMITS.MAX_FEEDBACK_TOKENS)}
+- 面试官笔记：${this.truncateToTokenLimit(this.sanitizeForPrompt(latestInterview.interviewerNotes || "无"), TOKEN_LIMITS.MAX_NOTES_TOKENS)}
 - 推荐意见：${latestInterview.recommendation || "未给出"}
-${transcription ? `- 面试转录：${transcription}` : ""}
-${latestInterview.aiKeyFindings ? `- AI 关键发现：${JSON.stringify(latestInterview.aiKeyFindings)}` : ""}
-${latestInterview.aiConcernAreas ? `- AI 关注点：${JSON.stringify(latestInterview.aiConcernAreas)}` : ""}
+${transcription ? `- 面试转录（摘要）：${transcription}` : ""}
+${latestInterview.aiKeyFindings ? `- AI 关键发现：${JSON.stringify(latestInterview.aiKeyFindings).substring(0, 500)}` : ""}
+${latestInterview.aiConcernAreas ? `- AI 关注点：${JSON.stringify(latestInterview.aiConcernAreas).substring(0, 500)}` : ""}
 
 **历史面试记录（共 ${allInterviews.length} 轮）：**
-${allInterviews.map(iv => `- 第 ${iv.round} 轮：${iv.type}，评分 ${iv.rating || "N/A"}/5，${iv.recommendation || "无推荐"}`).join("\n")}
+${interviewHistory}
 
-${job ? `\n**目标职位：**
-- 职位：${job.title}
-- 要求：${job.requirements ? (job.requirements as string[]).join(", ") : ""}
-- 描述：${this.sanitizeForPrompt(job.description)}` : ""}
+${jobInfo}
 
 **请更新画像，确保：**
 1. 基于证据整合面试中的新信息
@@ -737,6 +791,41 @@ ${job ? `\n**目标职位：**
 4. 更新优势、顾虑和信息缺口（区分已验证和待验证）
 5. 解决检测到的证据矛盾
 6. 重新生成 AI 总结，体现画像演进和证据增强`;
+
+    // ✨ Token 估算和日志
+    const estimatedTokens = this.estimateTokens(systemPrompt + userPrompt);
+    this.log('info', 'AI 提示词 Token 估算', {
+      candidateId: candidate.id,
+      interviewId: latestInterview.id,
+      estimatedTokens,
+      breakdown: {
+        systemPrompt: this.estimateTokens(systemPrompt),
+        userPrompt: this.estimateTokens(userPrompt),
+        evidenceSummary: this.estimateTokens(evidenceSummary),
+        interviewHistory: this.estimateTokens(interviewHistory),
+        transcription: this.estimateTokens(transcription),
+      },
+      withinLimit: estimatedTokens < TOKEN_LIMITS.MAX_TOTAL_TOKENS
+    });
+
+    // ✨ 如果仍然超限，使用降级策略
+    if (estimatedTokens > TOKEN_LIMITS.MAX_TOTAL_TOKENS) {
+      this.log('warn', 'Token 数量超限，使用降级策略', {
+        candidateId: candidate.id,
+        estimatedTokens,
+        limit: TOKEN_LIMITS.MAX_TOTAL_TOKENS
+      });
+
+      // 降级策略：移除面试转录
+      return await this.generateUpdatedProfileWithAI(
+        candidate,
+        currentProfile,
+        { ...latestInterview, transcription: null },  // 移除转录
+        allInterviews,
+        job,
+        newEvidence
+      );
+    }
 
     try {
       const result = await this.callAIWithRetry(
@@ -762,6 +851,7 @@ ${job ? `\n**目标职位：**
             hasJob: !!job,
             evidenceCount: newEvidence?.length || 0,
             contradictionsDetected: contradictions.length,
+            estimatedTokens,
           },
         }
       );
@@ -931,6 +1021,126 @@ ${job ? `\n**目标职位：**
     return lastBreak > maxLength * 0.8
       ? truncated.substring(0, lastBreak) + "..."
       : truncated + "...";
+  }
+
+  /**
+   * ✨ 估算文本的 token 数量（粗略估算）
+   * 中文约2.5字符 = 1 token
+   */
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / TOKEN_LIMITS.CHARS_PER_TOKEN);
+  }
+
+  /**
+   * ✨ 智能截断文本到目标 token 数量
+   * 优先在句子边界截断,保持语义完整性
+   */
+  private truncateToTokenLimit(text: string, maxTokens: number): string {
+    const maxChars = maxTokens * TOKEN_LIMITS.CHARS_PER_TOKEN;
+
+    if (text.length <= maxChars) {
+      return text;
+    }
+
+    // 在句子边界截断（寻找最后的句号、问号或感叹号）
+    const truncated = text.substring(0, maxChars);
+    const lastSentenceEnd = Math.max(
+      truncated.lastIndexOf('。'),
+      truncated.lastIndexOf('！'),
+      truncated.lastIndexOf('？'),
+      truncated.lastIndexOf('\n')
+    );
+
+    if (lastSentenceEnd > maxChars * 0.8) {
+      return truncated.substring(0, lastSentenceEnd + 1) + '\n[内容已截断]';
+    }
+
+    return truncated + '\n[内容已截断]';
+  }
+
+  /**
+   * ✨ 压缩历史面试记录
+   * 只保留关键信息,避免冗余
+   */
+  private summarizeInterviewHistory(
+    allInterviews: Interview[],
+    latestInterview: Interview,
+    maxTokens: number = TOKEN_LIMITS.MAX_HISTORY_TOKENS
+  ): string {
+    // 排除最新面试（会单独详细展示）
+    const previousInterviews = allInterviews.filter(iv => iv.id !== latestInterview.id);
+
+    if (previousInterviews.length === 0) {
+      return '首次面试';
+    }
+
+    // 简化格式：只保留关键信息
+    const summaries = previousInterviews.map(iv =>
+      `第${iv.round}轮${iv.type}：${iv.rating || 'N/A'}/5，${iv.recommendation || '无'}`
+    );
+
+    let result = summaries.join('\n');
+
+    // 如果超过限制，进一步压缩
+    if (this.estimateTokens(result) > maxTokens) {
+      // 只保留最近的5轮
+      const recentSummaries = summaries.slice(-5);
+      const omittedCount = summaries.length - recentSummaries.length;
+
+      result = [
+        `[省略前 ${omittedCount} 轮面试]`,
+        ...recentSummaries
+      ].join('\n');
+    }
+
+    return result;
+  }
+
+  /**
+   * ✨ 压缩证据摘要
+   * 提供高层次统计信息,避免详细列举
+   */
+  private buildEvidenceSummaryCompact(
+    allEvidence: Evidence[],
+    newEvidence: Evidence[],
+    maxTokens: number = TOKEN_LIMITS.MAX_EVIDENCE_TOKENS
+  ): string {
+    const totalEvidence = allEvidence.length;
+    const newEvidenceCount = newEvidence.length;
+
+    const strongEvidence = allEvidence.filter(e =>
+      e.strength === 'direct' || e.strength === 'strong'
+    );
+
+    const averageConfidence = totalEvidence > 0
+      ? allEvidence.reduce((sum, e) => sum + (e.confidence || 50), 0) / totalEvidence
+      : 0;
+
+    const sources = Array.from(new Set(allEvidence.map(e => this.getEvidenceSourceLabel(e.source))));
+
+    // 基础摘要（总是包含）
+    let summary = `
+- 总证据数：${totalEvidence} 条（本轮新增 ${newEvidenceCount} 条）
+- 强力证据：${strongEvidence.length} 条（${(strongEvidence.length / totalEvidence * 100).toFixed(0)}%）
+- 平均置信度：${averageConfidence.toFixed(0)}%
+- 证据来源：${sources.join('、')}
+- 证据密度：${totalEvidence > 10 ? '充分' : totalEvidence > 5 ? '良好' : '一般'}`;
+
+    // 如果还有 token 余量，添加关键证据示例
+    const currentTokens = this.estimateTokens(summary);
+    const remainingTokens = maxTokens - currentTokens;
+
+    if (remainingTokens > 500 && strongEvidence.length > 0) {
+      const topEvidence = strongEvidence
+        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+        .slice(0, 3)  // 只展示前3条最强证据
+        .map(e => `  - ${e.originalText.substring(0, 100)}`)
+        .join('\n');
+
+      summary += `\n\n关键证据示例：\n${topEvidence}`;
+    }
+
+    return summary;
   }
 
   /**
@@ -1153,41 +1363,53 @@ ${job ? `\n**目标职位：**
   /**
    * 从候选人画像中提取历史证据
    */
+  /**
+   * ✨ 从候选人画像中提取所有历史证据
+   * 确保证据链的完整性和连续性
+   */
   private extractEvidenceFromProfile(profile: CandidateProfile): Evidence[] {
     const evidence: Evidence[] = [];
 
     try {
       const profileData = profile.profileData as any;
 
-      // 从技能中提取证据
-      if (profileData.technicalSkills) {
-        for (const skill of profileData.technicalSkills) {
-          if (skill.evidence && Array.isArray(skill.evidence)) {
-            evidence.push(...skill.evidence);
-          }
-        }
-      }
+      // 1. 提取技能证据（技术技能 + 软技能）
+      this.extractSkillEvidence(profileData, evidence);
 
-      // 从软技能中提取证据
-      if (profileData.softSkills) {
-        for (const skill of profileData.softSkills) {
-          if (skill.evidence && Array.isArray(skill.evidence)) {
-            evidence.push(...skill.evidence);
-          }
-        }
-      }
+      // 2. 提取工作经验证据
+      this.extractExperienceEvidence(profileData, evidence);
 
-      // 从证据摘要中提取（如果存在）
-      if (profileData.evidenceSummary?.evidence) {
+      // 3. 提取教育背景证据
+      this.extractEducationEvidence(profileData, evidence);
+
+      // 4. 提取文化契合度证据
+      this.extractCulturalFitEvidence(profileData, evidence);
+
+      // 5. 提取职业发展证据
+      this.extractCareerTrajectoryEvidence(profileData, evidence);
+
+      // 6. 提取组织契合度证据（文化评估 + 领导力评估）
+      this.extractOrganizationalFitEvidence(profileData, evidence);
+
+      // 7. 提取 evidenceSummary 中的证据（防止丢失）
+      if (profileData.evidenceSummary?.evidence && Array.isArray(profileData.evidenceSummary.evidence)) {
         evidence.push(...profileData.evidenceSummary.evidence);
       }
 
+      // 8. 去重（基于证据ID或内容哈希）
+      const deduped = this.deduplicateEvidence(evidence);
+
       this.log("info", "从画像中提取历史证据", {
         profileId: profile.id,
-        evidenceCount: evidence.length
+        totalExtracted: evidence.length,
+        afterDedup: deduped.length,
+        breakdown: {
+          skills: evidence.filter(e => e.source === 'resume' || e.source === 'interview').length,
+          total: evidence.length
+        }
       });
 
-      return evidence;
+      return deduped;
     } catch (error) {
       this.log("error", "提取历史证据失败", {
         profileId: profile.id,
@@ -1195,6 +1417,201 @@ ${job ? `\n**目标职位：**
       });
       return [];
     }
+  }
+
+  /**
+   * ✨ 提取技能证据（技术技能 + 软技能）
+   */
+  private extractSkillEvidence(profileData: any, evidence: Evidence[]): void {
+    if (!profileData) return;
+
+    const skillTypes = ['technicalSkills', 'softSkills'];
+
+    for (const skillType of skillTypes) {
+      const skills = profileData[skillType];
+      if (!skills || !Array.isArray(skills) || skills.length === 0) continue;
+
+      for (const skill of skills) {
+        if (!skill) continue;
+
+        // 提取直接证据
+        if (skill.evidence && Array.isArray(skill.evidence)) {
+          evidence.push(...skill.evidence);
+        }
+
+        // 提取证据链
+        if (skill.evidenceChain?.supportingEvidence && Array.isArray(skill.evidenceChain.supportingEvidence)) {
+          evidence.push(...skill.evidenceChain.supportingEvidence);
+        }
+      }
+    }
+  }
+
+  /**
+   * ✨ 提取工作经验证据
+   */
+  private extractExperienceEvidence(profileData: any, evidence: Evidence[]): void {
+    if (!profileData?.experience) return;
+
+    const { positions, evidence: expEvidence } = profileData.experience;
+
+    // 提取职位证据
+    if (positions && Array.isArray(positions) && positions.length > 0) {
+      for (const position of positions) {
+        if (!position) continue;
+
+        // 职位成就证据
+        if (position.evidence && Array.isArray(position.evidence)) {
+          evidence.push(...position.evidence);
+        }
+
+        // 关键成就的证据
+        if (position.keyAchievements && Array.isArray(position.keyAchievements)) {
+          for (const achievement of position.keyAchievements) {
+            if (achievement && typeof achievement === 'object' && achievement.evidence && Array.isArray(achievement.evidence)) {
+              evidence.push(...achievement.evidence);
+            }
+          }
+        }
+      }
+    }
+
+    // 工作年限证据
+    if (expEvidence && Array.isArray(expEvidence)) {
+      evidence.push(...expEvidence);
+    }
+  }
+
+  /**
+   * ✨ 提取教育背景证据
+   */
+  private extractEducationEvidence(profileData: any, evidence: Evidence[]): void {
+    if (profileData.education?.evidence && Array.isArray(profileData.education.evidence)) {
+      evidence.push(...profileData.education.evidence);
+    }
+  }
+
+  /**
+   * ✨ 提取文化契合度证据
+   */
+  private extractCulturalFitEvidence(profileData: any, evidence: Evidence[]): void {
+    if (profileData.culturalFit?.evidence && Array.isArray(profileData.culturalFit.evidence)) {
+      evidence.push(...profileData.culturalFit.evidence);
+    }
+
+    // 工作风格证据
+    if (profileData.culturalFit?.workStyle?.evidence && Array.isArray(profileData.culturalFit.workStyle.evidence)) {
+      evidence.push(...profileData.culturalFit.workStyle.evidence);
+    }
+  }
+
+  /**
+   * ✨ 提取职业发展轨迹证据
+   */
+  private extractCareerTrajectoryEvidence(profileData: any, evidence: Evidence[]): void {
+    if (profileData.careerTrajectory?.evidence && Array.isArray(profileData.careerTrajectory.evidence)) {
+      evidence.push(...profileData.careerTrajectory.evidence);
+    }
+  }
+
+  /**
+   * ✨ 提取组织契合度证据（文化评估 + 领导力评估）
+   */
+  private extractOrganizationalFitEvidence(profileData: any, evidence: Evidence[]): void {
+    if (!profileData?.organizationalFit) return;
+
+    // 文化评估证据
+    if (profileData.organizationalFit.cultureAssessment?.valueAssessments && Array.isArray(profileData.organizationalFit.cultureAssessment.valueAssessments)) {
+      for (const valueAssessment of profileData.organizationalFit.cultureAssessment.valueAssessments) {
+        if (!valueAssessment?.evidence || !Array.isArray(valueAssessment.evidence)) continue;
+
+        // 将字符串证据转换为 Evidence 对象
+        const evidenceObjects = valueAssessment.evidence.map((e: any) => {
+          if (typeof e === 'string') {
+            // 生成唯一ID: 类型-时间戳-随机字符串
+            const uniqueId = `cultural-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            return {
+              id: uniqueId,
+              source: 'ai_analysis' as const,
+              originalText: e,
+              strength: 'moderate' as const,
+              confidence: 70,
+              timestamp: new Date().toISOString()
+            };
+          }
+          return e;
+        });
+        evidence.push(...evidenceObjects);
+      }
+    }
+
+    // 领导力评估证据
+    if (profileData.organizationalFit.leadershipAssessment?.dimensionScores && Array.isArray(profileData.organizationalFit.leadershipAssessment.dimensionScores)) {
+      for (const dimension of profileData.organizationalFit.leadershipAssessment.dimensionScores) {
+        if (!dimension?.evidence || !Array.isArray(dimension.evidence)) continue;
+
+        const evidenceObjects = dimension.evidence.map((e: any) => {
+          if (typeof e === 'string') {
+            // 生成唯一ID: 类型-时间戳-随机字符串
+            const uniqueId = `leadership-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            return {
+              id: uniqueId,
+              source: 'ai_analysis' as const,
+              originalText: e,
+              strength: 'moderate' as const,
+              confidence: 70,
+              timestamp: new Date().toISOString()
+            };
+          }
+          return e;
+        });
+        evidence.push(...evidenceObjects);
+      }
+    }
+  }
+
+  /**
+   * ✨ 证据去重 - 优化版 O(n)
+   * 基于证据ID或内容哈希进行去重
+   */
+  private deduplicateEvidence(evidence: Evidence[]): Evidence[] {
+    const seenIds = new Set<string>();
+    const seenHashes = new Set<string>();
+    const result: Evidence[] = [];
+
+    for (const e of evidence) {
+      // 优先使用 ID
+      if (e.id) {
+        if (seenIds.has(e.id)) continue;
+        seenIds.add(e.id);
+        result.push(e);
+        continue;
+      }
+
+      // 如果没有 ID，使用内容哈希
+      const hash = this.hashEvidence(e);
+      if (seenHashes.has(hash)) continue;
+      seenHashes.add(hash);
+      result.push(e);
+    }
+
+    return result;
+  }
+
+  /**
+   * ✨ 生成证据内容哈希（用于去重）
+   * 使用排序后的键确保一致性
+   */
+  private hashEvidence(evidence: Evidence): string {
+    // 按字母顺序排列键，确保相同内容生成相同哈希
+    const normalized = {
+      confidence: evidence.confidence || 0,
+      originalText: evidence.originalText || '',
+      source: evidence.source || '',
+      strength: evidence.strength || '',
+    };
+    const key = JSON.stringify(normalized);
+    return Buffer.from(key).toString('base64');
   }
 
   /**
@@ -1227,8 +1644,8 @@ ${job ? `\n**目标职位：**
       for (const [statement, evidences] of evidenceByStatement.entries()) {
         if (evidences.length > 1) {
           // 检查是否有矛盾的证据（简单版本：来源不同且强度冲突）
-          const resumeEvidence = evidences.filter((e: Evidence) => e.source === 'resume');
-          const interviewEvidence = evidences.filter((e: Evidence) => e.source === 'interview_feedback');
+          const resumeEvidence = evidences.filter((e: Evidence) => e.source === EvidenceSource.RESUME);
+          const interviewEvidence = evidences.filter((e: Evidence) => e.source === EvidenceSource.INTERVIEW_FEEDBACK);
 
           if (resumeEvidence.length > 0 && interviewEvidence.length > 0) {
             // 这里可以使用 AI 进行更精确的矛盾检测
@@ -1319,10 +1736,10 @@ ${job ? `\n**目标职位：**
       // 生成面试准备材料
       const preparation = await this.generatePreparationContent(
         candidate,
-        latestProfile,
+        latestProfile ?? null,
         upcomingInterview,
         completedInterviews,
-        job
+        job ?? null
       );
 
       // 保存到数据库

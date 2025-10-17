@@ -29,6 +29,9 @@ export function JobMatchCard({
   onViewDetails,
   onApply,
 }: JobMatchCardProps) {
+  const requirements = Array.isArray(job.requirements)
+    ? (job.requirements as string[])
+    : [];
   const getMatchColor = (score: number) => {
     if (score >= 80) return "text-green-600";
     if (score >= 60) return "text-blue-600";
@@ -122,18 +125,18 @@ export function JobMatchCard({
           </p>
         )}
 
-        {job.requirements && (job.requirements as string[]).length > 0 && (
+        {requirements.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">Key Requirements</p>
             <div className="flex flex-wrap gap-1">
-              {(job.requirements as string[]).slice(0, 4).map((req, index) => (
+              {requirements.slice(0, 4).map((req, index) => (
                 <Badge key={index} variant="outline" className="text-xs" data-testid={`badge-requirement-${index}`}>
                   {req}
                 </Badge>
               ))}
-              {(job.requirements as string[]).length > 4 && (
+              {requirements.length > 4 && (
                 <Badge variant="outline" className="text-xs">
-                  +{(job.requirements as string[]).length - 4} more
+                  +{requirements.length - 4} more
                 </Badge>
               )}
             </div>

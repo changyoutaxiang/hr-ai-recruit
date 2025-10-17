@@ -21,6 +21,16 @@ import type { CandidateProfile, ProfileData } from "@shared/schema";
 import { profileDataSchema } from "@shared/schema";
 import { getStageLabel, ProfileDataParser } from "@/lib/profile-utils";
 
+interface TrendPoint {
+  stage: string;
+  version: number;
+  culture: number;
+  leadership: number;
+  overall: number;
+  isCurrent: boolean;
+  date: string;
+}
+
 interface OrganizationFitTrendProps {
   profiles: CandidateProfile[];
   currentProfileId?: string;
@@ -32,24 +42,35 @@ export const OrganizationFitTrend = memo<OrganizationFitTrendProps>(({
 }) => {
   const parser = useMemo(() => new ProfileDataParser(), []);
 
-  const trendData = useMemo(() => {
-    return profiles.map(p => {
-      const profileData = parser.parse(p);
-      if (!profileData.success) return null;
+  const trendData = useMemo<TrendPoint[]>(() => {
+    return profiles
+      .map((profile) => {
+        const profileData = parser.parse(profile);
+        if (!profileData.success) return null;
 
-      const data: ProfileData = profileData.data;
-      const orgFit = data.organizationalFit;
+        const data: ProfileData = profileData.data;
+        const orgFit = data.organizationalFit;
 
-      return {
-        stage: getStageLabel(p.stage),
-        version: p.version,
-        culture: orgFit?.cultureAssessment?.overallScore || 0,
-        leadership: orgFit?.leadershipAssessment?.overallScore || 0,
-        overall: parseFloat(p.overallScore || "0"),
-        isCurrent: p.id === currentProfileId,
-        date: new Date(p.createdAt).toLocaleDateString("zh-CN")
-      };
-    }).filter(Boolean);
+        const createdAt = profile.createdAt ? new Date(profile.createdAt) : null;
+        const formattedDate = createdAt && !Number.isNaN(createdAt.getTime())
+          ? createdAt.toLocaleDateString("zh-CN")
+          : "时间未知";
+
+        const overallScore = profile.overallScore ? Number(profile.overallScore) : 0;
+
+        const trendPoint: TrendPoint = {
+          stage: getStageLabel(profile.stage),
+          version: profile.version,
+          culture: orgFit?.cultureAssessment?.overallScore ?? 0,
+          leadership: orgFit?.leadershipAssessment?.overallScore ?? 0,
+          overall: Number.isFinite(overallScore) ? overallScore : 0,
+          isCurrent: profile.id === currentProfileId,
+          date: formattedDate,
+        };
+
+        return trendPoint;
+      })
+      .filter((value): value is TrendPoint => value !== null);
   }, [profiles, currentProfileId, parser]);
 
   if (trendData.length === 0) {
@@ -199,8 +220,9 @@ export const OrganizationFitTrend = memo<OrganizationFitTrendProps>(({
               <span className="text-muted-foreground">文化契合度:</span>
               <span className="font-medium">
                 {(() => {
-                  const lastTwo = trendData.slice(-2);
-                  const diff = lastTwo[1].culture - lastTwo[0].culture;
+                  const [previous, current] = trendData.slice(-2);
+                  if (!previous || !current) return "数据不足";
+                  const diff = current.culture - previous.culture;
                   if (diff > 0) return `上升 ${diff.toFixed(1)} 分 ↑`;
                   if (diff < 0) return `下降 ${Math.abs(diff).toFixed(1)} 分 ↓`;
                   return "保持稳定 →";
@@ -214,8 +236,9 @@ export const OrganizationFitTrend = memo<OrganizationFitTrendProps>(({
               <span className="text-muted-foreground">领导力评分:</span>
               <span className="font-medium">
                 {(() => {
-                  const lastTwo = trendData.slice(-2);
-                  const diff = lastTwo[1].leadership - lastTwo[0].leadership;
+                  const [previous, current] = trendData.slice(-2);
+                  if (!previous || !current) return "数据不足";
+                  const diff = current.leadership - previous.leadership;
                   if (diff > 0) return `上升 ${diff.toFixed(1)} 分 ↑`;
                   if (diff < 0) return `下降 ${Math.abs(diff).toFixed(1)} 分 ↓`;
                   return "保持稳定 →";
@@ -229,8 +252,9 @@ export const OrganizationFitTrend = memo<OrganizationFitTrendProps>(({
               <span className="text-muted-foreground">综合评分:</span>
               <span className="font-medium">
                 {(() => {
-                  const lastTwo = trendData.slice(-2);
-                  const diff = lastTwo[1].overall - lastTwo[0].overall;
+                  const [previous, current] = trendData.slice(-2);
+                  if (!previous || !current) return "数据不足";
+                  const diff = current.overall - previous.overall;
                   if (diff > 0) return `提升 ${diff.toFixed(1)} 分 ↑`;
                   if (diff < 0) return `下降 ${Math.abs(diff).toFixed(1)} 分 ↓`;
                   return "保持稳定 →";

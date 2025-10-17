@@ -37,7 +37,7 @@ export interface ResumeAnalysis {
   education: string;
   strengths: string[];
   weaknesses: string[];
-  recommendations: string[];
+  recommendations?: string[];
 }
 
 export interface ResumeAnalysisResult {

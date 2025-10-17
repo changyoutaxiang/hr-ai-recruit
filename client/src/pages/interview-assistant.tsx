@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useCandidates } from "@/hooks/use-candidates";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InterviewAssistant } from "@/components/interview-assistant";
+import type { Candidate, Job, Interview } from "@shared/schema";
 import {
   Brain,
   Users,
@@ -36,26 +38,29 @@ export default function InterviewAssistantPage() {
   const [showAssistant, setShowAssistant] = useState(false);
 
   // 获取候选人列表
-  const { data: candidates } = useQuery({
-    queryKey: ["/api/candidates"],
-  });
+  const { data: candidates = [] } = useCandidates();
 
   // 获取职位列表
-  const { data: jobs } = useQuery({
+  const { data: jobs = [] } = useQuery<Job[]>({
     queryKey: ["/api/jobs"],
+    select: (data = []) => data,
   });
 
   // 获取即将进行的面试
-  const { data: upcomingInterviews } = useQuery({
+  const { data: upcomingInterviews = [] } = useQuery<Interview[], Error, Interview[]>({
     queryKey: ["/api/interviews"],
-    select: (interviews) =>
-      interviews?.filter((i: any) =>
-        new Date(i.scheduledDate) > new Date() && i.status === "scheduled"
-      ).slice(0, 5),
+    select: (interviews = []) =>
+      interviews
+        .filter((interview) => {
+          if (!interview.scheduledDate) return false;
+          const scheduledAt = new Date(interview.scheduledDate);
+          return scheduledAt > new Date() && interview.status === "scheduled";
+        })
+        .slice(0, 5),
   });
 
-  const selectedCandidateData = candidates?.find((c: any) => c.id === selectedCandidate);
-  const selectedJobData = jobs?.find((j: any) => j.id === selectedJob);
+  const selectedCandidateData = candidates.find((candidate) => candidate.id === selectedCandidate);
+  const selectedJobData = jobs.find((job) => job.id === selectedJob);
 
   const startInterview = () => {
     if (selectedCandidate && selectedJob) {

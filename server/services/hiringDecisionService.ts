@@ -70,7 +70,7 @@ export class HiringDecisionService {
         storage.getCandidate(candidateId),
         storage.getJob(jobId),
         storage.getInterviewsByCandidate(candidateId),
-        storage.getCandidateProfile(candidateId),
+        storage.getLatestCandidateProfile(candidateId),
         storage.getHiringDecision(candidateId, jobId),
         storage.getCandidatesForJob(jobId)
       ]);
@@ -225,8 +225,10 @@ export class HiringDecisionService {
 
     const profileData = profile.profileData as any || {};
 
+    const overallScore = profile.overallScore ? Number(profile.overallScore) : 0;
+
     return {
-      overallScore: profile.score || 0,
+      overallScore,
       technicalFit: this.calculateTechnicalFit(profileData),
       culturalFit: profileData.organizationalFit?.cultureAssessment?.overallScore || 0,
       experienceMatch: this.calculateExperienceMatch(profileData),
@@ -242,7 +244,8 @@ export class HiringDecisionService {
     if (skills.length === 0) return 0;
 
     const totalScore = skills.reduce((acc: number, skill: any) => {
-      return acc + (HIRING_DECISION_CONFIG.PROFICIENCY_SCORES[skill.proficiency] || 0);
+      const proficiency = (skill.proficiency || "intermediate") as keyof typeof HIRING_DECISION_CONFIG.PROFICIENCY_SCORES;
+      return acc + (HIRING_DECISION_CONFIG.PROFICIENCY_SCORES[proficiency] || 0);
     }, 0);
 
     return Math.min(100, totalScore / skills.length);
@@ -463,7 +466,7 @@ ${interviewFeedback || '暂无面试反馈'}
     // Record token usage (no await to avoid blocking)
     storage.createAiConversation({
       userId: "system",
-      sessionId: `hiring-analysis-${candidateId}`,
+      sessionId: `hiring-analysis-${candidate.id}`,
       message: `Analyze candidate strengths and weaknesses for hiring decision`,
       response: JSON.stringify(aiResponse),
       modelUsed: result.model,

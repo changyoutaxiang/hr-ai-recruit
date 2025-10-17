@@ -39,3 +39,20 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Test files (should not be committed)
+test-*.ts
+test-*.js
+test-*.pdf
+test-*.txt
+test_*.txt
+*.test.pdf
+
+# Supabase temporary files
+supabase/.temp/
+supabase/functions/.temp/
+
+# Personal documents (resumes, private PDFs)
+*.resume.pdf
+*简历*.pdf
+*管培生*.pdf

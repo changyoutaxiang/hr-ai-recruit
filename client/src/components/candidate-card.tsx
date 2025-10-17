@@ -16,6 +16,7 @@ import {
   Clock,
   Tag
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { type Candidate } from "@shared/schema";
 
 interface CandidateCardProps {
@@ -25,6 +26,7 @@ interface CandidateCardProps {
 }
 
 export function CandidateCard({ candidate, onUploadResume, onViewMatches }: CandidateCardProps) {
+  const [, navigate] = useLocation();
   const getStatusColor = (status: string) => {
     switch (status) {
       case "applied":
@@ -242,7 +244,12 @@ export function CandidateCard({ candidate, onUploadResume, onViewMatches }: Cand
         {/* Actions */}
         <div className="flex flex-col space-y-2 pt-2">
           <div className="flex space-x-2">
-            <Button size="sm" className="flex-1" data-testid={`button-view-${candidate.id}`}>
+            <Button 
+              size="sm" 
+              className="flex-1" 
+              onClick={() => navigate(`/candidates/${candidate.id}`)}
+              data-testid={`button-view-${candidate.id}`}
+            >
               <Eye className="w-4 h-4 mr-2" />
               View Profile
             </Button>

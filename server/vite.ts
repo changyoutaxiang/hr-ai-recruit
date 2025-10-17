@@ -20,55 +20,26 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
-
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
-      },
+    configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
+    server: {
+      middlewareMode: true,
+      hmr: { server },
     },
-    server: serverOptions,
-    appType: "custom",
+    appType: "spa",
   });
 
-  app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
+  // Handle .well-known requests with proper 404 responses
+  app.use('/.well-known/*', (req, res) => {
+    res.status(404).json({ error: 'Not Found' });
+  });
 
-    // Skip Vite's catch-all for API routes
-    if (url.startsWith('/api/')) {
+  // Use Vite middleware for all non-API routes
+  app.use((req, res, next) => {
+    if (req.originalUrl.startsWith('/api/')) {
       return next();
     }
-
-    try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "..",
-        "client",
-        "index.html",
-      );
-
-      // always reload the index.html file from disk incase it changes
-      let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`,
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
-    }
+    vite.middlewares(req, res, next);
   });
 }
 

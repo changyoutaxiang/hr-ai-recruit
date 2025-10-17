@@ -57,6 +57,57 @@ export async function requireAuth(
   }
 }
 
+// 新的中间件：允许用户初始化（即使用户在数据库中不存在）
+export async function requireAuthWithInit(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized: No token provided' });
+    }
+
+    const token = authHeader.substring(7);
+
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+    }
+
+    // 尝试从数据库获取用户配置文件
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('id, email, role')
+      .eq('id', user.id)
+      .single();
+
+    if (userProfile) {
+      // 用户存在，设置用户信息
+      req.user = {
+        id: userProfile.id,
+        email: userProfile.email,
+        role: userProfile.role,
+      };
+    } else {
+      // 用户不存在，但 Supabase 认证有效，设置基本用户信息
+      req.user = {
+        id: user.id,
+        email: user.email || '',
+        role: 'recruiter', // 默认角色
+      };
+    }
+
+    next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+}
+
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

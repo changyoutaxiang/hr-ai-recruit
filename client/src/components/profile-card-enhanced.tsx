@@ -126,7 +126,7 @@ const getStageLabel = (stage: string): string => {
   return stage;
 };
 
-const formatDate = (date?: string | Date): string => {
+const formatDate = (date?: string | Date | null): string => {
   if (!date) return "";
   const parsed = new Date(date);
   if (isNaN(parsed.getTime())) return "日期无效";
@@ -493,10 +493,10 @@ export const ProfileCardEnhanced = memo<ProfileCardEnhancedProps>(({
     return (profileData as any).organizationalFit || null;
   }, [profileData]);
 
-  const strengths = useMemo(() => (profile.strengths as string[]) || [], [profile.strengths]);
-  const concerns = useMemo(() => (profile.concerns as string[]) || [], [profile.concerns]);
-  const gaps = useMemo(() => (profile.gaps as string[]) || [], [profile.gaps]);
-  const dataSources = useMemo(() => (profile.dataSources as string[]) || [], [profile.dataSources]);
+  const strengths = useMemo(() => (Array.isArray(profile.strengths) ? (profile.strengths as string[]) : []), [profile.strengths]);
+  const concerns = useMemo(() => (Array.isArray(profile.concerns) ? (profile.concerns as string[]) : []), [profile.concerns]);
+  const gaps = useMemo(() => (Array.isArray(profile.gaps) ? (profile.gaps as string[]) : []), [profile.gaps]);
+  const dataSources = useMemo(() => (Array.isArray(profile.dataSources) ? (profile.dataSources as string[]) : []), [profile.dataSources]);
 
   const overallScore = useMemo(() => {
     const score = parseFloat(profile.overallScore ?? "0");

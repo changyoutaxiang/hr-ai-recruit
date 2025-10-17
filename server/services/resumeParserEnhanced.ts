@@ -1,20 +1,13 @@
-import { pdfToPng, PngPageOutput } from "pdf-to-png-converter";
-import sharp from "sharp";
-import OpenAI from "openai";
+import { createRequire } from "module";
+import { openai } from "./openaiService";
 import { resumeParserService } from "./resumeParser";
 import type { ParsedResume } from "./resumeParser";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY || '',
-  baseURL: "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "https://hr-recruit-system.vercel.app",
-    "X-Title": "AI Recruit System",
-  },
-});
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
 
-// GPT-5 支持多模态（文本+图像）
-const VISION_MODEL = process.env.VISION_AI_MODEL || "openai/gpt-5";
+// 使用 GPT-4o-mini 进行文本分析，性价比更高
+const ANALYSIS_MODEL = process.env.RESUME_AI_MODEL || "openai/gpt-4o-mini";
 
 export interface EnhancedResumeAnalysis {
   summary: string;
@@ -40,216 +33,343 @@ export interface EnhancedResumeAnalysis {
     language: string;
     proficiency: string;
   }>;
+  confidence: number; // 解析置信度 0-100
+}
+
+export interface ParsedResumeData {
+  text: string;
+  analysis: EnhancedResumeAnalysis;
+  metadata: {
+    parser: string;
+    confidence: number;
+    processingTime: number;
+  };
 }
 
 export class EnhancedResumeParser {
+  
   /**
-   * 使用 GPT-5 的视觉能力直接分析 PDF 图片
-   * 这样可以保留布局、表格、图表等视觉信息
+   * 使用多策略解析PDF文本
    */
-  async parseWithVision(fileBuffer: Buffer, mimeType: string): Promise<{
-    parsedText: ParsedResume;
-    visionAnalysis: EnhancedResumeAnalysis;
+  private async extractTextFromPDF(fileBuffer: Buffer): Promise<{
+    text: string;
+    confidence: number;
+    method: string;
   }> {
-    // 先使用传统方法提取文本作为备份
-    const parsedText = await resumeParserService.parseFile(fileBuffer, mimeType);
+    const results: Array<{ text: string; confidence: number; method: string }> = [];
 
-    if (mimeType !== "application/pdf") {
-      // 如果不是 PDF，只返回文本分析
-      return {
-        parsedText,
-        visionAnalysis: await this.analyzeWithTextOnly(parsedText.text)
-      };
-    }
-
+    // 策略1: 使用 pdf-parse (快速，适合标准PDF)
     try {
-      // 将 PDF 转换为图片
-      console.log("[Vision Parser] Converting PDF to images...");
-      const pngPages = await pdfToPng(fileBuffer, {
-        disableFontFace: false,
-        useSystemFonts: true,
-        viewportScale: 2.0, // 高分辨率
-      });
-
-      // 准备图片数据用于 GPT-5 分析
-      const imageMessages: any[] = [];
-
-      for (let i = 0; i < Math.min(pngPages.length, 5); i++) { // 最多处理5页
-        const page = pngPages[i] as PngPageOutput;
-
-        // 将图片转换为 base64
-        const base64Image = page.content.toString('base64');
-
-        imageMessages.push({
-          type: "image_url",
-          image_url: {
-            url: `data:image/png;base64,${base64Image}`,
-            detail: "high" // 使用高精度分析
-          }
+      console.log("[Enhanced Parser] Trying pdf-parse...");
+      const pdfData = await pdfParse(fileBuffer);
+      const cleanText = this.cleanText(pdfData.text);
+      if (cleanText.length > 100) {
+        results.push({
+          text: cleanText,
+          confidence: this.calculateTextConfidence(cleanText),
+          method: "pdf-parse"
         });
       }
+    } catch (error) {
+      console.log("[Enhanced Parser] pdf-parse failed:", error);
+    }
 
-      console.log(`[Vision Parser] Analyzing ${imageMessages.length} pages with GPT-5 vision...`);
+    // 策略2: 使用 pdf-parse 进行更精确的文本提取
+    try {
+      console.log("[Enhanced Parser] Trying pdf-parse extraction...");
+      const pdfParseText = await this.extractWithPdfParse(fileBuffer);
+      const cleanText = this.cleanText(pdfParseText);
+      if (cleanText.length > 50) {
+        results.push({
+          text: cleanText,
+          confidence: this.calculateTextConfidence(cleanText),
+          method: "pdf-parse"
+        });
+      }
+    } catch (error) {
+      console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
+    }
 
-      // 使用 GPT-5 的多模态能力分析简历图片
-      const response = await openai.chat.completions.create({
-        model: VISION_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert HR recruiter with extensive experience analyzing resumes from various cultural contexts, especially Chinese resumes.
+    // 策略3: 使用原有的解析器作为后备
+     try {
+       console.log("[Enhanced Parser] Trying fallback parser...");
+       const fallbackResult = await resumeParserService.parseFile(fileBuffer, "application/pdf");
+       const cleanText = this.cleanText(fallbackResult.text);
+       if (cleanText.length > 50) {
+         results.push({
+           text: cleanText,
+           confidence: this.calculateTextConfidence(cleanText),
+           method: "fallback"
+         });
+       }
+     } catch (error) {
+       console.log("[Enhanced Parser] Fallback parser failed:", error);
+     }
 
-Your task is to analyze the resume images and extract comprehensive structured information.
+    // 选择最佳结果
+    if (results.length === 0) {
+      throw new Error("所有PDF解析策略都失败了");
+    }
 
-Key Instructions:
-1. Analyze the visual layout, tables, and formatting to understand information hierarchy
-2. Extract information from both Chinese and English text accurately
-3. Identify information from tables, charts, and visual elements
-4. Pay attention to logos, certificates, and visual badges
-5. Understand Chinese date formats, job titles, and company names
-6. Extract both explicit and implicit information from the visual context
+    // 按置信度排序，选择最佳结果
+    results.sort((a, b) => b.confidence - a.confidence);
+    const bestResult = results[0];
+    
+    console.log(`[Enhanced Parser] Best result: ${bestResult.method} (confidence: ${bestResult.confidence})`);
+    return bestResult;
+  }
 
-Return a detailed JSON analysis with the following structure:
+  /**
+   * 使用 pdf-parse 提取文本
+   */
+  private async extractWithPdfParse(fileBuffer: Buffer): Promise<string> {
+    try {
+      const data = await pdfParse(fileBuffer, {
+        normalizeWhitespace: false,
+        disableFontFace: false,
+        useSystemFonts: true,
+      });
+      return data.text;
+    } catch (error) {
+      console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * 清理和标准化文本
+   */
+  private cleanText(text: string): string {
+    return text
+      // 移除多余的空白字符
+      .replace(/\s+/g, ' ')
+      // 移除特殊字符但保留中文
+      .replace(/[^\w\s\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df\u2a700-\u2b73f\u2b740-\u2b81f\u2b820-\u2ceaf\uf900-\ufaff\u3300-\u33ff\ufe30-\ufe4f\uf900-\ufaff\u2f800-\u2fa1f.,;:()\-@+]/g, ' ')
+      // 标准化换行
+      .replace(/\n+/g, '\n')
+      // 移除首尾空白
+      .trim();
+  }
+
+  /**
+   * 计算文本质量置信度
+   */
+  private calculateTextConfidence(text: string): number {
+    let confidence = 0;
+    
+    // 基础长度检查
+    if (text.length > 500) confidence += 30;
+    else if (text.length > 200) confidence += 20;
+    else if (text.length > 100) confidence += 10;
+    
+    // 关键词检查
+    const keywords = ['经验', '工作', '教育', '技能', '项目', 'experience', 'education', 'skills', 'work'];
+    const foundKeywords = keywords.filter(keyword => 
+      text.toLowerCase().includes(keyword.toLowerCase())
+    ).length;
+    confidence += foundKeywords * 5;
+    
+    // 邮箱和电话检查
+    if (text.includes('@')) confidence += 10;
+    if (/\d{11}|\d{3}-\d{4}-\d{4}/.test(text)) confidence += 10;
+    
+    // 日期格式检查
+    if (/\d{4}[-年]\d{1,2}/.test(text)) confidence += 10;
+    
+    // 中英文混合内容检查
+    const hasChinese = /[\u4e00-\u9fff]/.test(text);
+    const hasEnglish = /[a-zA-Z]/.test(text);
+    if (hasChinese && hasEnglish) confidence += 15;
+    
+    return Math.min(confidence, 100);
+  }
+
+  /**
+   * 使用AI分析提取的文本
+   */
+  private async analyzeWithAI(text: string): Promise<EnhancedResumeAnalysis> {
+    const prompt = `你是一个专业的HR简历分析专家。请仔细分析以下简历文本，提取结构化信息。
+
+简历文本：
+${text}
+
+请按照以下JSON格式返回分析结果：
 {
-  "summary": "Comprehensive professional summary in the same language as the resume",
-  "skills": ["skill1", "skill2", "..."],
-  "experience": 5,
-  "education": "Highest education level and major",
-  "strengths": ["strength1", "strength2", "strength3"],
-  "weaknesses": ["area1", "area2"],
-  "recommendations": ["recommendation1", "recommendation2"],
+  "summary": "简历概要（2-3句话）",
+  "skills": ["技能1", "技能2", "技能3"],
+  "experience": 工作年限数字,
+  "education": "最高学历",
+  "strengths": ["优势1", "优势2", "优势3"],
+  "weaknesses": ["需要改进的地方1", "需要改进的地方2"],
+  "recommendations": ["建议1", "建议2"],
   "workHistory": [
     {
-      "company": "Company Name",
-      "position": "Job Title",
-      "duration": "2020.03 - 2023.05",
-      "responsibilities": ["responsibility1", "responsibility2"]
+      "company": "公司名称",
+      "position": "职位",
+      "duration": "时间段",
+      "responsibilities": ["职责1", "职责2"]
     }
   ],
   "projects": [
     {
-      "name": "Project Name",
-      "description": "Brief description",
-      "technologies": ["tech1", "tech2"]
+      "name": "项目名称",
+      "description": "项目描述",
+      "technologies": ["技术1", "技术2"]
     }
   ],
-  "certifications": ["cert1", "cert2"],
+  "certifications": ["证书1", "证书2"],
   "languages": [
     {
-      "language": "Chinese",
-      "proficiency": "Native"
+      "language": "语言名称",
+      "proficiency": "熟练程度"
     }
-  ]
+  ],
+  "confidence": 85
 }
 
-IMPORTANT:
-- Extract ALL information visible in the images, including from tables and visual elements
-- Maintain the original language for names and titles
-- Calculate experience accurately from work history
-- Include information from any certificates or badges shown`
+注意：
+1. 如果某些信息在简历中没有明确提及，请合理推断或标记为"未提及"
+2. 工作年限请根据工作经历计算
+3. confidence字段表示对分析结果的置信度(0-100)
+4. 所有数组字段即使为空也要返回空数组[]
+5. 请确保返回的是有效的JSON格式`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: ANALYSIS_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: "你是一个专业的HR简历分析专家，擅长从简历文本中提取结构化信息。请始终返回有效的JSON格式。"
           },
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Please analyze this resume thoroughly. The resume is shown in the following images:"
-              },
-              ...imageMessages
-            ]
+            content: prompt
           }
         ],
-        response_format: { type: "json_object" },
-        temperature: 0.2, // 低温度确保准确性
-        max_tokens: 4000
+        temperature: 0.3,
+        max_tokens: 2000,
       });
 
-      const content = response.choices[0].message.content;
+      const content = response.choices[0]?.message?.content;
       if (!content) {
-        throw new Error("No response from vision model");
+        throw new Error("AI分析返回空结果");
       }
 
-      const visionAnalysis = JSON.parse(content) as EnhancedResumeAnalysis;
+      // 尝试解析JSON
+      try {
+        const analysis = JSON.parse(content);
+        
+        // 验证必需字段
+        const requiredFields = ['summary', 'skills', 'experience', 'education', 'strengths', 'weaknesses', 'recommendations', 'workHistory', 'projects', 'certifications', 'languages'];
+        for (const field of requiredFields) {
+          if (!(field in analysis)) {
+            analysis[field] = field === 'experience' ? 0 : (field === 'summary' || field === 'education' ? '未提及' : []);
+          }
+        }
 
-      console.log("[Vision Parser] Vision analysis completed successfully");
+        // 确保confidence字段存在
+        if (!analysis.confidence) {
+          analysis.confidence = 70; // 默认置信度
+        }
 
-      return {
-        parsedText,
-        visionAnalysis
-      };
-
+        return analysis;
+      } catch (parseError) {
+        console.error("[Enhanced Parser] JSON解析失败:", parseError);
+        console.error("[Enhanced Parser] AI返回内容:", content);
+        
+        // 返回默认结构
+        return this.getDefaultAnalysis();
+      }
     } catch (error) {
-      console.error("[Vision Parser] Error in vision analysis, falling back to text-only:", error);
-
-      // 如果视觉分析失败，回退到纯文本分析
-      return {
-        parsedText,
-        visionAnalysis: await this.analyzeWithTextOnly(parsedText.text)
-      };
+      console.error("[Enhanced Parser] AI分析失败:", error);
+      return this.getDefaultAnalysis();
     }
   }
 
   /**
-   * 纯文本分析（备用方案）
+   * 返回默认分析结果
    */
-  private async analyzeWithTextOnly(text: string): Promise<EnhancedResumeAnalysis> {
-    const response = await openai.chat.completions.create({
-      model: VISION_MODEL, // GPT-5 也能很好地处理纯文本
-      messages: [
-        {
-          role: "system",
-          content: `Analyze the resume text and extract structured information. Return JSON with the structure defined.`
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3
-    });
-
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("No response from AI");
-    }
-
-    return JSON.parse(content) as EnhancedResumeAnalysis;
+  private getDefaultAnalysis(): EnhancedResumeAnalysis {
+    return {
+      summary: "简历解析完成，但AI分析遇到问题",
+      skills: [],
+      experience: 0,
+      education: "未提及",
+      strengths: [],
+      weaknesses: ["需要更详细的简历信息"],
+      recommendations: ["建议提供更完整的简历信息"],
+      workHistory: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+      confidence: 30
+    };
   }
 
   /**
-   * 选择最佳解析模式
+   * 主要解析方法
    */
-  async parse(fileBuffer: Buffer, mimeType: string, useVision: boolean = true): Promise<{
-    text: string;
-    analysis: EnhancedResumeAnalysis;
-    metadata: any;
-  }> {
-    if (useVision && mimeType === "application/pdf") {
-      // 使用视觉分析
-      const { parsedText, visionAnalysis } = await this.parseWithVision(fileBuffer, mimeType);
+  async parse(fileBuffer: Buffer, mimeType: string): Promise<ParsedResumeData> {
+    const startTime = Date.now();
+    
+    try {
+      console.log("[Enhanced Parser] 开始解析简历...");
+      
+      let extractedText: string;
+      let confidence: number;
+      let method: string;
+
+      if (mimeType === "application/pdf") {
+        const result = await this.extractTextFromPDF(fileBuffer);
+        extractedText = result.text;
+        confidence = result.confidence;
+        method = result.method;
+      } else {
+        // 处理纯文本文件
+        extractedText = fileBuffer.toString('utf-8');
+        confidence = this.calculateTextConfidence(extractedText);
+        method = "text";
+      }
+
+      console.log(`[Enhanced Parser] 文本提取完成，长度: ${extractedText.length}, 置信度: ${confidence}`);
+
+      // 使用AI分析文本
+      const analysis = await this.analyzeWithAI(extractedText);
+      
+      const processingTime = Date.now() - startTime;
+      console.log(`[Enhanced Parser] 解析完成，耗时: ${processingTime}ms`);
+
       return {
-        text: parsedText.text,
-        analysis: visionAnalysis,
-        metadata: {
-          ...parsedText.metadata,
-          analysisMode: "vision",
-          model: VISION_MODEL
-        }
-      };
-    } else {
-      // 使用传统文本分析
-      const parsed = await resumeParserService.parseFile(fileBuffer, mimeType);
-      const analysis = await this.analyzeWithTextOnly(parsed.text);
-      return {
-        text: parsed.text,
+        text: extractedText,
         analysis,
         metadata: {
-          ...parsed.metadata,
-          analysisMode: "text",
-          model: VISION_MODEL
+          parser: `enhanced-${method}`,
+          confidence,
+          processingTime
         }
       };
+    } catch (error) {
+      console.error("[Enhanced Parser] 解析失败:", error);
+      
+      // 尝试使用原有解析器作为最后的后备方案
+       try {
+         const fallbackResult = await resumeParserService.parseFile(fileBuffer, mimeType);
+         const analysis = await this.analyzeWithAI(fallbackResult.text);
+         
+         return {
+           text: fallbackResult.text,
+           analysis,
+           metadata: {
+             parser: "enhanced-fallback",
+             confidence: 50,
+             processingTime: Date.now() - startTime
+           }
+         };
+       } catch (fallbackError) {
+         console.error("[Enhanced Parser] 后备解析也失败:", fallbackError);
+         throw new Error(`简历解析失败: ${(error as Error).message}`);
+       }
     }
   }
 }

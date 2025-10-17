@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWebSocketContext } from "@/contexts/websocket-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   Bell, 
   BellRing,
@@ -47,20 +48,27 @@ export function NotificationPanel() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { user, loading } = useAuth();
 
-  // Mock user ID - in real app this would come from auth context
-  const userId = "hr-user-1";
+  // 使用真实的用户ID
+  const userId = user?.id;
 
-  const { data: notificationData } = useQuery<Notification[]>({
-    queryKey: ["/api/notifications", userId],
+  const { data: notificationData, error } = useQuery<Notification[]>({
+    queryKey: ["notifications", userId],
     queryFn: async () => {
-      const response = await fetch(`/api/notifications?userId=${userId}`, {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status}: ${response.statusText}`);
-      }
+      if (!userId) throw new Error("User not authenticated");
+      const response = await apiRequest("GET", `/api/notifications?userId=${userId}`);
       return response.json();
+    },
+    enabled: !!userId && !loading, // 只有在用户已认证且不在加载中时才执行查询
+    staleTime: 30 * 1000, // 30秒缓存时间
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => {
+      // 对于认证错误不重试
+      if (error?.message?.includes('not authenticated') || error?.message?.includes('401')) {
+        return false;
+      }
+      return failureCount < 2;
     },
   });
 
@@ -69,7 +77,7 @@ export function NotificationPanel() {
       return apiRequest("PATCH", `/api/notifications/${notificationId}/read`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
+      queryClient.invalidateQueries({ queryKey: ["notifications", userId] });
     },
   });
 
@@ -77,13 +85,22 @@ export function NotificationPanel() {
   
   // Handle real-time notifications
   useEffect(() => {
+    if (!userId) return;
+    
     const unsubscribe = subscribe((message: any) => {
       if (message.type === 'notification') {
         const newNotification = message.payload;
-        setNotifications(prev => [newNotification, ...prev]);
         
-        // Invalidate notifications query to refresh
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications", userId] });
+        // 只有当通知是给当前用户的时候才处理
+        if (newNotification.userId === userId) {
+          setNotifications(prev => [newNotification, ...prev]);
+          
+          // 使用 setQueryData 直接更新缓存，而不是失效查询
+          queryClient.setQueryData(["notifications", userId], (oldData: Notification[] | undefined) => {
+            if (!oldData) return [newNotification];
+            return [newNotification, ...oldData];
+          });
+        }
       }
     });
     

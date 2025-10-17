@@ -4,22 +4,22 @@
  */
 
 import { openai } from "./openaiService";
-import type {
-  InterviewQuestion,
+import {
   QuestionType,
   QuestionDifficulty,
-  QuestionRecommendationRequest,
-  QuestionRecommendation,
-  RecommendedQuestion,
-  InterviewStrategy,
-  TimeAllocation,
-  EvaluationFramework,
-  EvaluationDimension,
-  InterviewSession,
-  AnswerRecord,
-  AISuggestion,
-  InterviewReport,
-  InterviewTemplate
+  type InterviewQuestion,
+  type QuestionRecommendationRequest,
+  type QuestionRecommendation,
+  type RecommendedQuestion,
+  type InterviewStrategy,
+  type TimeAllocation,
+  type EvaluationFramework,
+  type EvaluationDimension,
+  type InterviewSession,
+  type AnswerRecord,
+  type AISuggestion,
+  type InterviewReport,
+  type InterviewTemplate
 } from "@shared/types/interview-assistant";
 import { storage } from "../storage";
 import { v4 as uuidv4 } from 'uuid';
@@ -668,7 +668,6 @@ export class InterviewAssistantService {
     if (profiles.length === 0) return null;
     const sortedProfiles = profiles.sort((a, b) => (b.version || 0) - (a.version || 0));
     return sortedProfiles[0];
-    return result[0];
   }
 
   private assessDifficulty(question: any, round: number): QuestionDifficulty {

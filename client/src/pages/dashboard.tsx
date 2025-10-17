@@ -7,7 +7,8 @@ import { NotificationPanel } from "@/components/notification-panel";
 import { OnlineUsers } from "@/components/online-users";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useLanguage } from "@/contexts/language-context";
-import { useQuery } from "@tanstack/react-query";
+import { useCandidates } from "@/hooks/use-candidates";
+import { useDashboardMetrics } from "@/hooks/use-dashboard";
 import { queryClient } from "@/lib/queryClient";
 import { 
   Users, 
@@ -26,32 +27,16 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-
-interface DashboardMetrics {
-  totalCandidates: number;
-  activeJobs: number;
-  upcomingInterviews: number;
-  interviewRate: number;
-  hireRate: number;
-  funnel: {
-    applied: number;
-    screening: number;
-    interview: number;
-    hired: number;
-  };
-}
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
   const [showAIModal, setShowAIModal] = useState(false);
   const { t } = useLanguage();
+  const [, navigate] = useLocation();
 
-  const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
-    queryKey: ["/api/dashboard/metrics"],
-  });
+  const { data: metrics, isLoading } = useDashboardMetrics();
 
-  const { data: candidates } = useQuery<any[]>({
-    queryKey: ["/api/candidates"],
-  });
+  const { data: candidates } = useCandidates();
 
   if (isLoading) {
     return (
@@ -373,7 +358,12 @@ export default function Dashboard() {
                             </span>
                           </td>
                           <td className="py-3">
-                            <Button variant="ghost" size="sm" data-testid={`button-view-candidate-${candidate.id}`}>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => navigate(`/candidates/${candidate.id}`)}
+                              data-testid={`button-view-candidate-${candidate.id}`}
+                            >
                               {t('candidates.viewProfile')}
                             </Button>
                           </td>

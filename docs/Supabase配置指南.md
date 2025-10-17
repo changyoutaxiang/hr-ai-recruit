@@ -85,7 +85,7 @@ WHERE email = 'wangdong@51talk.com';
 - Name: `resumes`
 - Public: **No** (私有)
 - File size limit: 10 MB
-- Allowed MIME types: `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+- Allowed MIME types: `application/pdf`
 
 ### Bucket 2: interview-recordings
 - Name: `interview-recordings`

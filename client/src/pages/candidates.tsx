@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { CandidateCard } from "@/components/candidate-card";
 import { ResumeUploader } from "@/components/resume-uploader";
+import { BulkResumeUploader } from "@/components/bulk-resume-uploader";
 import { CandidateJobMatches } from "@/components/candidate-job-matches";
 import { useCandidates } from "@/hooks/use-candidates";
 import { useMutation } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ export default function Candidates() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
   const [selectedCandidateForResume, setSelectedCandidateForResume] = useState<string | null>(null);
   const [selectedCandidateForMatches, setSelectedCandidateForMatches] = useState<string | null>(null);
   const { toast } = useToast();
@@ -221,7 +223,11 @@ export default function Candidates() {
             </div>
             
             <div className="flex items-center space-x-3">
-              <Button variant="outline" data-testid="button-import-candidates">
+              <Button 
+                variant="outline" 
+                data-testid="button-import-candidates"
+                onClick={() => setIsBulkUploadOpen(true)}
+              >
                 <Upload className="w-4 h-4 mr-2" />
                 {t('candidates.importCandidates')}
               </Button>
@@ -365,6 +371,25 @@ export default function Candidates() {
           )}
         </main>
       </div>
+
+      {/* Bulk Resume Uploader */}
+      <BulkResumeUploader
+        isOpen={isBulkUploadOpen}
+        onClose={() => setIsBulkUploadOpen(false)}
+        onComplete={(results) => {
+          // 刷新候选人列表
+          queryClient.invalidateQueries({ queryKey: ["candidates"] });
+          setIsBulkUploadOpen(false);
+          
+          const successCount = results.filter(r => r.status === 'success').length;
+          if (successCount > 0) {
+            toast({
+              title: "批量导入成功",
+              description: `成功导入 ${successCount} 个候选人`,
+            });
+          }
+        }}
+      />
     </div>
   );
 }

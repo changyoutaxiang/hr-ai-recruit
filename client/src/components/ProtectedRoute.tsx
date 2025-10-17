@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,19 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const [, setLocation] = useLocation();
   const { user, profile, loading } = useAuth();
+
+  // 稳定 setLocation 引用，避免不必要的 effect 重新执行
+  const setLocationRef = useRef(setLocation);
+  useEffect(() => {
+    setLocationRef.current = setLocation;
+  });
+
+  // 使用 useEffect 处理导航，避免在渲染期间执行副作用
+  useEffect(() => {
+    if (!loading && (!user || !profile)) {
+      setLocationRef.current('/login');
+    }
+  }, [loading, user, profile]); // 仅依赖认证状态
 
   if (loading) {
     return (
@@ -28,8 +41,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   }
 
   if (!user || !profile) {
-    setLocation('/login');
-    return null;
+    return null; // 等待 useEffect 触发导航
   }
 
   if (allowedRoles && !allowedRoles.includes(profile.role)) {

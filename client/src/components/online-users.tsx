@@ -4,6 +4,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useWebSocketContext } from "@/contexts/websocket-context";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Users, Circle } from "lucide-react";
 
 interface User {
@@ -15,9 +17,24 @@ interface User {
 
 export function OnlineUsers() {
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
+  const { user, loading } = useAuth();
 
-  const { data: onlineData } = useQuery<User[]>({
-    queryKey: ["/api/team/online"],
+  const { data: onlineData, error } = useQuery<User[]>({
+    queryKey: ["team", "online"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/team/online");
+      return response.json();
+    },
+    enabled: !!user && !loading, // 只有在用户已认证时才执行查询
+    staleTime: 30 * 1000, // 30秒缓存时间
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => {
+      // 对于认证错误不重试
+      if (error?.message?.includes('401') || error?.message?.includes('Unauthorized')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   const { isConnected, subscribe } = useWebSocketContext();

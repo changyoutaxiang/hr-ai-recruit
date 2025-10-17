@@ -3,6 +3,19 @@ import { pgTable, text, varchar, integer, timestamp, jsonb, decimal, boolean, un
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export interface ResumeAnalysis {
+  summary: string;
+  skills: string[];
+  experience: number;
+  education: string;
+  strengths: string[];
+  weaknesses: string[];
+  recommendations?: string[];
+  [key: string]: unknown;
+}
+
+export type TargetedResumeAnalysis = Record<string, unknown>;
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
@@ -21,7 +34,8 @@ export const jobs = pgTable("jobs", {
   type: text("type").notNull(), // full-time, part-time, contract
   salaryMin: integer("salary_min"),
   salaryMax: integer("salary_max"),
-  requirements: jsonb("requirements"), // array of strings
+  requirements: jsonb("requirements").$type<string[] | null>(), // array of strings
+  focusAreas: jsonb("focus_areas").$type<string[] | null>(),
   description: text("description").notNull(),
   status: text("status").notNull().default("active"), // active, paused, closed
   createdBy: varchar("created_by").references(() => users.id),
@@ -39,15 +53,19 @@ export const candidates = pgTable("candidates", {
   education: text("education"),
   location: text("location"),
   salaryExpectation: integer("salary_expectation"),
+  expectedSalary: integer("expected_salary"),
+  yearsOfExperience: integer("years_of_experience"),
   resumeUrl: text("resume_url"),
   resumeText: text("resume_text"),
-  skills: jsonb("skills"), // array of strings
+  skills: jsonb("skills").$type<string[] | null>(), // array of strings
   status: text("status").notNull().default("applied"), // applied, screening, interview, offer, hired, rejected
   matchScore: decimal("match_score", { precision: 5, scale: 2 }),
   aiSummary: text("ai_summary"),
   notes: text("notes"),
   source: text("source").default("manual"), // manual, linkedin, job_board, referral
-  tags: jsonb("tags"), // array of strings for categorization
+  tags: jsonb("tags").$type<string[] | null>(), // array of strings for categorization
+  resumeAnalysis: jsonb("resume_analysis").$type<ResumeAnalysis | null>(),
+  targetedAnalysis: jsonb("targeted_analysis").$type<TargetedResumeAnalysis | null>(),
   lastContactedAt: timestamp("last_contacted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -100,6 +118,9 @@ export const jobMatches = pgTable("job_matches", {
   matchReasons: jsonb("match_reasons"), // array of strings
   aiAnalysis: text("ai_analysis"),
   basicMatchScore: decimal("basic_match_score", { precision: 5, scale: 2 }),
+  status: text("status").notNull().default("pending"),
+  analysis: jsonb("analysis").$type<Record<string, unknown> | null>(),
+  score: decimal("score", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

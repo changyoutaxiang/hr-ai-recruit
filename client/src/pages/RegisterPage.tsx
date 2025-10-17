@@ -22,6 +22,15 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
 
+    // 调试信息
+    console.log('Form submission - State values:', {
+      fullName,
+      email,
+      password: password.length > 0 ? `${password.length} chars` : 'empty',
+      confirmPassword: confirmPassword.length > 0 ? `${confirmPassword.length} chars` : 'empty',
+      passwordsMatch: password === confirmPassword
+    });
+
     if (password !== confirmPassword) {
       setError('密码不匹配');
       return;

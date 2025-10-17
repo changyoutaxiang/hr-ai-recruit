@@ -4,16 +4,16 @@
  */
 
 import { openai } from "./openaiService";
-import type {
-  Evidence,
+import {
   EvidenceSource,
   EvidenceStrength,
-  Claim,
   ClaimType,
-  EvidenceChain,
-  EvidenceSearchParams,
-  EvidenceNode,
-  EvidenceEdge
+  type Evidence,
+  type Claim,
+  type EvidenceChain,
+  type EvidenceSearchParams,
+  type EvidenceNode,
+  type EvidenceEdge
 } from "@shared/types/evidence";
 import { v4 as uuidv4 } from 'uuid';
 
@@ -166,7 +166,7 @@ Return as JSON array of evidence objects with:
     statement: string,
     type: ClaimType,
     evidence: Evidence[],
-    reasoning?: { method: string; steps: string[] }
+    reasoning?: { method?: string; steps: string[]; assumptions?: string[] }
   ): Promise<Claim> {
     // 计算基于证据的置信度
     const confidenceScore = this.calculateConfidenceFromEvidence(evidence);
@@ -183,7 +183,7 @@ Return as JSON array of evidence objects with:
       supportingEvidence: evidence,
       evidenceSummary,
       confidenceScore,
-      reasoning
+      reasoning: this.normalizeReasoning(reasoning)
     };
   }
 
@@ -226,6 +226,29 @@ Return as JSON array of evidence objects with:
       contradictoryEvidence: contradictoryEvidence.length > 0 ? contradictoryEvidence : undefined,
       argumentStructure,
       visualizationData
+    };
+  }
+
+  private normalizeReasoning(
+    reasoning?: { method?: string; steps: string[]; assumptions?: string[] }
+  ): Claim["reasoning"] {
+    if (!reasoning) return undefined;
+    type ReasoningMethod = NonNullable<Claim["reasoning"]>["method"];
+    const allowed: readonly ReasoningMethod[] = [
+      "direct",
+      "inductive",
+      "deductive",
+      "abductive",
+    ];
+
+    const method = allowed.includes(reasoning.method as ReasoningMethod)
+      ? (reasoning.method as ReasoningMethod)
+      : "direct";
+
+    return {
+      method,
+      steps: reasoning.steps,
+      assumptions: reasoning.assumptions,
     };
   }
 

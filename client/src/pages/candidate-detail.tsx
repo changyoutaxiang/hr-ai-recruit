@@ -139,48 +139,7 @@ export default function CandidateDetailPage() {
     },
   });
 
-  if (!candidateId) {
-    return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>无效的候选人 ID</AlertDescription>
-      </Alert>
-    );
-  }
-
-  if (candidateError) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            加载候选人信息失败: {candidateError instanceof Error ? candidateError.message : "未知错误"}
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  if (isCandidateLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Skeleton className="h-8 w-64 mb-4" />
-        <Skeleton className="h-[400px] w-full" />
-      </div>
-    );
-  }
-
-  if (!candidate) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>未找到候选人信息</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
+  // 所有Hooks必须在早期返回之前调用
   useEffect(() => {
     if (profiles.length > 0 && !selectedProfileId) {
       setSelectedProfileId(profiles[profiles.length - 1].id);
@@ -200,21 +159,6 @@ export default function CandidateDetailPage() {
     () => profiles.find(p => p.id === selectedProfileId),
     [profiles, selectedProfileId]
   );
-
-  const comparisonProfiles = useMemo(() => {
-    const profileA = comparisonProfileIds[0] ? profiles.find(p => p.id === comparisonProfileIds[0]) : null;
-    const profileB = comparisonProfileIds[1] ? profiles.find(p => p.id === comparisonProfileIds[1]) : null;
-    return { profileA, profileB };
-  }, [profiles, comparisonProfileIds]);
-
-  const handleBuildProfile = () => {
-    buildProfileMutation.mutate(undefined);
-  };
-
-  const handleProfileSelect = (profile: CandidateProfile) => {
-    setSelectedProfileId(profile.id);
-    setActiveTab("overview");
-  };
 
   // 生成面试准备材料
   const generateInterviewPreparationMutation = useMutation({
@@ -281,6 +225,64 @@ export default function CandidateDetailPage() {
       });
     },
   });
+
+  const comparisonProfiles = useMemo(() => {
+    const profileA = comparisonProfileIds[0] ? profiles.find(p => p.id === comparisonProfileIds[0]) : null;
+    const profileB = comparisonProfileIds[1] ? profiles.find(p => p.id === comparisonProfileIds[1]) : null;
+    return { profileA, profileB };
+  }, [profiles, comparisonProfileIds]);
+
+  // 早期返回语句必须在所有Hooks调用之后
+  if (!candidateId) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>无效的候选人 ID</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (candidateError) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            加载候选人信息失败: {candidateError instanceof Error ? candidateError.message : "未知错误"}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (isCandidateLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Skeleton className="h-8 w-64 mb-4" />
+        <Skeleton className="h-[400px] w-full" />
+      </div>
+    );
+  }
+
+  if (!candidate) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>未找到候选人信息</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  const handleBuildProfile = () => {
+    buildProfileMutation.mutate(undefined);
+  };
+
+  const handleProfileSelect = (profile: CandidateProfile) => {
+    setSelectedProfileId(profile.id);
+    setActiveTab("overview");
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">

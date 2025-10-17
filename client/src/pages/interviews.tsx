@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/ui/sidebar";
 import { InterviewCard } from "@/components/interview-card";
 import { useInterviews } from "@/hooks/use-interviews";
+import { useCandidates } from "@/hooks/use-candidates";
 import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/contexts/language-context";
 import { 
@@ -37,9 +38,7 @@ export default function Interviews() {
   } = useInterviews();
 
   // Fetch candidates and jobs for enhanced search
-  const { data: candidates } = useQuery<any[]>({
-    queryKey: ["/api/candidates"],
-  });
+  const { data: candidates } = useCandidates();
 
   const { data: jobs } = useQuery<any[]>({
     queryKey: ["/api/jobs"],

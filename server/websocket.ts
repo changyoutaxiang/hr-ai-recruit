@@ -18,6 +18,7 @@ class CollaborationService {
   private wss: WebSocketServer;
   private clients: Map<string, WSClient> = new Map();
   private userSessions: Map<string, string[]> = new Map(); // userId -> sessionIds[]
+  private connectionCount = 0;
 
   constructor(server: Server) {
     this.wss = new WebSocketServer({ server });
@@ -28,29 +29,38 @@ class CollaborationService {
     this.wss.on('connection', (ws: WSClient, req) => {
       const sessionId = randomUUID();
       ws.sessionId = sessionId;
+      this.connectionCount++;
       
-      console.log(`New WebSocket connection: ${sessionId}`);
+      // Only log connection count periodically to reduce noise
+      if (this.connectionCount % 10 === 0 || this.connectionCount <= 5) {
+        console.log(`WebSocket connections: ${this.connectionCount}`);
+      }
 
       ws.on('message', async (data) => {
         try {
           const message: WSMessage = JSON.parse(data.toString());
           await this.handleMessage(ws, message);
         } catch (error) {
-          console.error('Error handling WebSocket message:', error);
+          console.error('WebSocket message error:', error);
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
         }
       });
 
       ws.on('close', async () => {
+        this.connectionCount--;
         if (ws.userId && ws.sessionId) {
           await this.handleUserDisconnect(ws.userId, ws.sessionId);
         }
         this.clients.delete(ws.sessionId!);
-        console.log(`WebSocket disconnected: ${ws.sessionId}`);
+        
+        // Only log disconnection count periodically
+        if (this.connectionCount % 10 === 0 || this.connectionCount <= 5) {
+          console.log(`WebSocket connections: ${this.connectionCount}`);
+        }
       });
 
       ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket connection error:', error);
       });
 
       // Send welcome message
@@ -74,9 +84,11 @@ class CollaborationService {
         await this.handlePageChange(ws, message.payload);
         break;
       case 'ping':
+        // Don't log ping/pong messages as they're frequent heartbeats
         ws.send(JSON.stringify({ type: 'pong' }));
         break;
       default:
+        console.warn(`Unknown WebSocket message type: ${message.type}`);
         ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
     }
   }
@@ -127,8 +139,10 @@ class CollaborationService {
         payload: { onlineUsers }
       }));
 
+      console.log(`User authenticated: ${userId}`);
+
     } catch (error) {
-      console.error('Error creating user session:', error);
+      console.error('Authentication error:', error);
       ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
     }
   }
@@ -171,7 +185,7 @@ class CollaborationService {
       await this.createActivityNotification(activity);
 
     } catch (error) {
-      console.error('Error handling activity:', error);
+      console.error('Activity handling error:', error);
       ws.send(JSON.stringify({ type: 'error', message: 'Failed to log activity' }));
     }
   }
@@ -196,7 +210,7 @@ class CollaborationService {
       }, ws.sessionId);
 
     } catch (error) {
-      console.error('Error updating page:', error);
+      console.error('Page change error:', error);
     }
   }
 
@@ -223,10 +237,12 @@ class CollaborationService {
             type: 'user_offline',
             payload: { userId }
           });
+          
+          console.log(`User disconnected: ${userId}`);
         }
       }
     } catch (error) {
-      console.error('Error handling user disconnect:', error);
+      console.error('Disconnect handling error:', error);
     }
   }
 
@@ -289,7 +305,7 @@ class CollaborationService {
         }
       }
     } catch (error) {
-      console.error('Error creating activity notification:', error);
+      console.error('Notification creation error:', error);
     }
   }
 

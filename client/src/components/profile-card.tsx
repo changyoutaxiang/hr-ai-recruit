@@ -63,7 +63,7 @@ const getStageLabel = (stage: string): string => {
   return stage;
 };
 
-const formatDate = (date?: string | Date): string => {
+const formatDate = (date?: string | Date | null): string => {
   if (!date) return "";
   const parsed = new Date(date);
   if (isNaN(parsed.getTime())) return "日期无效";
@@ -83,7 +83,9 @@ const formatDate = (date?: string | Date): string => {
 
 const ProfileCardCompact = memo<{ profile: CandidateProfile; overallScore: number; profileData: ProfileData | null }>(
   ({ profile, overallScore, profileData }) => {
-    const strengths = (profile.strengths as string[]) || [];
+    const strengths = Array.isArray(profile.strengths)
+      ? (profile.strengths as string[])
+      : [];
 
     return (
       <Card className="hover:shadow-md transition-shadow">

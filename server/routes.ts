@@ -63,7 +63,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Health check endpoint
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'unknown',
+      websocket: process.env.VERCEL !== '1' ? 'enabled' : 'disabled',
+      features: {
+        ai: !!process.env.OPENROUTER_API_KEY,
+        storage: !!process.env.SUPABASE_URL,
+        database: !!process.env.DATABASE_URL
+      }
+    });
   });
 
   // Handle Chrome DevTools .well-known requests

@@ -32,6 +32,9 @@ export function CandidateMatchCard({
   onViewDetails,
   onScheduleInterview,
 }: CandidateMatchCardProps) {
+  const skills = Array.isArray(candidate.skills)
+    ? (candidate.skills as string[])
+    : [];
   const getMatchColor = (score: number) => {
     if (score >= 80) return "text-green-600";
     if (score >= 60) return "text-blue-600";
@@ -109,18 +112,18 @@ export function CandidateMatchCard({
           )}
         </div>
 
-        {candidate.skills && (candidate.skills as string[]).length > 0 && (
+        {skills.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">Skills</p>
             <div className="flex flex-wrap gap-1">
-              {(candidate.skills as string[]).slice(0, 5).map((skill, index) => (
+              {skills.slice(0, 5).map((skill, index) => (
                 <Badge key={index} variant="secondary" className="text-xs" data-testid={`badge-skill-${index}`}>
                   {skill}
                 </Badge>
               ))}
-              {(candidate.skills as string[]).length > 5 && (
+              {skills.length > 5 && (
                 <Badge variant="outline" className="text-xs">
-                  +{(candidate.skills as string[]).length - 5} more
+                  +{skills.length - 5} more
                 </Badge>
               )}
             </div>

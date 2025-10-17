@@ -632,6 +632,61 @@ ${latest.derailers.join(', ')}
   }
 
   /**
+   * 兼容旧接口：领导力框架评估
+   */
+  async assessLeadershipFramework(
+    candidateData: Parameters<OrganizationalFitService["assessLeadership"]>[0],
+    stage: Parameters<OrganizationalFitService["assessLeadership"]>[1],
+    targetLevel?: Parameters<OrganizationalFitService["assessLeadership"]>[2]
+  ): Promise<LeadershipAssessment> {
+    return this.assessLeadership(candidateData, stage, targetLevel);
+  }
+
+  /**
+   * 兼容旧接口：文化契合对齐评估
+   */
+  async assessCultureAlignment(
+    profileData: any,
+    context?: { feedbackScore?: number; observations?: string[] }
+  ): Promise<CultureFitAssessment> {
+    const behavioralResponses = context?.observations?.length
+      ? { combined: context.observations.join('\n') }
+      : undefined;
+
+    return this.assessCultureFit(
+      {
+        resumeText:
+          profileData?.resumeSummary || profileData?.resumeText || "",
+        profileHistory: Array.isArray(profileData?.profileHistory)
+          ? profileData.profileHistory
+          : undefined,
+        behavioralResponses,
+      },
+      "interview_feedback"
+    );
+  }
+
+  /**
+   * 兼容旧接口：生成综合演化报告
+   */
+  generateEvolutionReport(
+    cultureHistory: CultureFitAssessment[],
+    leadershipHistory: LeadershipAssessment[]
+  ): {
+    cultureReport: string | null;
+    leadershipReport: string | null;
+  } {
+    return {
+      cultureReport: cultureHistory.length
+        ? this.generateCultureEvolutionReport(cultureHistory)
+        : null,
+      leadershipReport: leadershipHistory.length
+        ? this.generateLeadershipEvolutionReport(leadershipHistory)
+        : null,
+    };
+  }
+
+  /**
    * 比较两个候选人的组织契合度
    */
   compareCandidates(

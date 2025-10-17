@@ -136,7 +136,7 @@ export class InterviewFeedbackService {
     await storage.updateInterview(feedback.interviewId, {
       feedback: JSON.stringify(feedback.observations),
       rating: feedback.scores.overall,
-      notes: feedback.additionalNotes,
+      interviewerNotes: feedback.additionalNotes ?? null,
       updatedAt: new Date()
     });
   }
@@ -332,9 +332,30 @@ Return as JSON with keys: overallScore, strengths (array), concerns (array), gap
         }
       );
 
+      const valueAssessments = (cultureUpdate.valueAssessments || []).map(value => {
+        const alignmentLevel: "strong" | "moderate" | "weak" = value.score >= 80
+          ? "strong"
+          : value.score >= 60
+            ? "moderate"
+            : "weak";
+
+        return {
+          valueName: value.valueName,
+          score: value.score,
+          evidence: value.evidence,
+          confidence: value.confidence,
+          alignmentLevel,
+        };
+      });
+
       profileData.organizationalFit = {
-        ...profileData.organizationalFit,
-        cultureAssessment: cultureUpdate
+        ...(profileData.organizationalFit || {}),
+        cultureAssessment: {
+          ...cultureUpdate,
+          culturalStrengths: cultureUpdate.strengths || [],
+          culturalRisks: cultureUpdate.risks || [],
+          valueAssessments,
+        },
       };
     }
 

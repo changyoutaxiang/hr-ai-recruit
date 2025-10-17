@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ObjectUploader } from "@/components/ObjectUploader";
+import ObjectUploader from "@/components/ObjectUploader";
 import { ResumeAnalysis } from "@/components/resume-analysis";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { retryFetch, retryPost } from "@/lib/retry-fetch";
 import { getUserFriendlyErrorMessage } from "@/lib/error-handling";
+import { apiRequest } from "@/lib/api";
 import { 
   Upload, 
   FileText, 
@@ -89,21 +90,61 @@ export function ResumeUploader({
     },
   });
 
-  const handleGetUploadParameters = async () => {
-    try {
-      const data = await retryPost("/api/objects/upload", {}, {
+  const analyzeUploadedResumeMutation = useMutation({
+    mutationFn: async (filePath: string) => {
+      const response = await retryFetch(`/api/candidates/${candidateId}/analyze-uploaded-resume`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ filePath }),
+        credentials: "include",
+      }, {
         maxRetries: 3,
-        retryDelay: 1000,
+        retryDelay: 2000,
         exponentialBackoff: true,
+        timeout: 60000,
       });
-      return {
-        method: "PUT" as const,
-        url: data.uploadURL,
-      };
-    } catch (error) {
-      throw new Error(getUserFriendlyErrorMessage(error));
-    }
-  };
+
+      return response.json();
+    },
+    onSuccess: (data: ResumeAnalysisResult & { profile?: { id: string; version: number; generated: boolean }; profileError?: string }) => {
+      setAnalysisResult(data);
+      setUploadStatus("complete");
+      onAnalysisComplete?.(data);
+      onCandidateUpdate?.(data.candidate);
+
+      if (data.profile?.generated) {
+        toast({
+          title: "简历分析完成",
+          description: `AI 分析已完成，初始画像（版本 ${data.profile.version}）已自动生成！`,
+        });
+      } else if (data.profileError) {
+        toast({
+          title: "简历分析完成",
+          description: "AI 分析已完成，但画像生成失败。您可以稍后在候选人详情页手动生成。",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "简历分析完成",
+          description: "AI 分析已完成，请查看下方分析结果。",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      setUploadStatus("error");
+      const friendlyMessage = getUserFriendlyErrorMessage(error);
+      setError(friendlyMessage);
+      toast({
+        title: "简历处理失败",
+        description: friendlyMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+
 
   const handleFileUpload = async (result: any) => {
     if (result.successful && result.successful.length > 0) {
@@ -111,9 +152,55 @@ export function ResumeUploader({
       setUploadStatus("processing");
       setUploadProgress(100);
       
-      // Create a file object from the uploaded data
-      const file = uploadedFile.data as File;
-      processResumeMutation.mutate(file);
+      // The proxy endpoint returns the analysis result directly
+      // Check if we have response data from the proxy endpoint
+      if (uploadedFile.response && uploadedFile.response.body) {
+        try {
+          const responseData = uploadedFile.response.body;
+          if (responseData.analysis) {
+            // Direct analysis result from proxy endpoint
+            setAnalysisResult(responseData.analysis);
+            setUploadStatus("complete");
+            onAnalysisComplete?.(responseData.analysis);
+            onCandidateUpdate?.(responseData.analysis.candidate);
+            
+            if (responseData.profile?.generated) {
+              toast({
+                title: "简历分析完成",
+                description: `AI 分析已完成，初始画像（版本 ${responseData.profile.version}）已自动生成！`,
+              });
+            } else {
+              toast({
+                title: "简历分析完成",
+                description: "AI 分析已完成，请查看下方分析结果。",
+              });
+            }
+            return;
+          }
+        } catch (parseError) {
+          console.error('Failed to parse response:', parseError);
+        }
+      }
+      
+      // Fallback: if no direct analysis, extract file path and analyze separately
+      const uploadUrl = uploadedFile.uploadURL || uploadedFile.url;
+      if (uploadUrl) {
+        const urlParts = uploadUrl.split('/');
+        const bucketIndex = urlParts.indexOf('resumes');
+        if (bucketIndex !== -1 && bucketIndex < urlParts.length - 1) {
+          const filePath = urlParts.slice(bucketIndex + 1).join('/');
+          console.log('Extracted file path:', filePath);
+          analyzeUploadedResumeMutation.mutate(filePath);
+        } else {
+          console.error('Could not extract file path from upload URL:', uploadUrl);
+          setUploadStatus("error");
+          setError("无法从上传结果中提取文件路径");
+        }
+      } else {
+        console.error('No upload URL found in result:', uploadedFile);
+        setUploadStatus("error");
+        setError("上传结果中缺少文件URL");
+      }
     }
   };
 
@@ -227,10 +314,9 @@ export function ResumeUploader({
               <ObjectUploader
                 maxNumberOfFiles={1}
                 maxFileSize={10 * 1024 * 1024} // 10MB
-                onGetUploadParameters={handleGetUploadParameters}
+                candidateId={candidateId}
                 onComplete={handleFileUpload}
                 buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
-                data-testid="button-upload-resume"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Choose Resume File
