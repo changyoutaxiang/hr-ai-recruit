@@ -3,6 +3,27 @@
 # 快速部署脚本 - 交互式版本
 # 用途：引导用户完成 Vercel 部署的每一步
 
+set -e  # 遇到错误立即退出
+set -u  # 使用未定义变量时退出
+set -o pipefail  # 管道命令失败时退出
+
+# 颜色定义
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# 错误处理函数
+error_exit() {
+    echo -e "\n${RED}❌ 错误: 脚本在第 $1 行失败${NC}" >&2
+    echo -e "${YELLOW}💡 提示: 检查上方的错误信息，或向 Claude 寻求帮助${NC}" >&2
+    exit 1
+}
+
+# 设置错误陷阱
+trap 'error_exit $LINENO' ERR
+
 clear
 echo "=================================="
 echo "🚀 Vercel 交互式部署向导"
@@ -11,13 +32,6 @@ echo ""
 echo "本脚本将引导您完成 Vercel 部署的每一步。"
 echo "请按照提示操作。"
 echo ""
-
-# 颜色定义
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
 
 # 步骤 1
 echo -e "${BLUE}📋 步骤 1/3: Vercel 登录${NC}"

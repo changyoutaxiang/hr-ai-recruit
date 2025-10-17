@@ -81,6 +81,15 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
     }
   }, []);
 
+  // 释放连接锁和连接标志（集中管理，防止死锁）
+  const releaseConnectionLock = useCallback((reason?: string) => {
+    if (connectionLock.current || isConnecting.current) {
+      console.log(`[WebSocket] Releasing connection lock${reason ? `: ${reason}` : ''}`);
+      connectionLock.current = false;
+      isConnecting.current = false;
+    }
+  }, []);
+
   const connect = useCallback(() => {
     // 检查连接锁
     if (connectionLock.current) {
@@ -117,22 +126,20 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
       return;
     }
 
-    // 设置连接锁
+    // 设置连接锁和连接标志
     connectionLock.current = true;
-    
-    // Clear any pending reconnection attempts
-    clearReconnectTimeout();
-
-    // Set connecting flag
     isConnecting.current = true;
 
-    // Close existing connection if it exists and is not already closed
-    if (ws.current && ws.current.readyState !== WebSocket.CLOSED) {
-      ws.current.close();
-      ws.current = null;
-    }
-
     try {
+      // Clear any pending reconnection attempts
+      clearReconnectTimeout();
+
+      // Close existing connection if it exists and is not already closed
+      if (ws.current && ws.current.readyState !== WebSocket.CLOSED) {
+        ws.current.close();
+        ws.current = null;
+      }
+
       const wsUrl = getWebSocketURL();
       console.log('[WebSocket] Connecting to:', wsUrl, 'for user:', user.id);
       ws.current = new WebSocket(wsUrl);
@@ -141,8 +148,7 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
         console.log('[WebSocket] Connected successfully for user:', user.id);
         setIsConnected(true);
         reconnectAttempts.current = 0;
-        isConnecting.current = false;
-        connectionLock.current = false; // 释放连接锁
+        releaseConnectionLock('connection established');
         lastUserId.current = user.id; // 记录当前用户ID
         
         // Wait a bit to ensure connection is fully established
@@ -204,8 +210,7 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
       ws.current.onclose = (event) => {
         console.log('[WebSocket] Connection closed for user:', lastUserId.current);
         setIsConnected(false);
-        isConnecting.current = false;
-        connectionLock.current = false; // 释放连接锁
+        releaseConnectionLock('connection closed');
         
         // Only attempt to reconnect if auto-connect is enabled, should connect, and we haven't exceeded max attempts
         if (autoConnect && shouldConnect.current && reconnectAttempts.current < maxReconnectAttempts && user && profile && !loading) {
@@ -224,24 +229,21 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
       ws.current.onerror = (error) => {
         console.error('WebSocket error:', error);
         setIsConnected(false);
-        isConnecting.current = false;
-        connectionLock.current = false; // 释放连接锁
+        releaseConnectionLock('connection error');
       };
 
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
       setIsConnected(false);
-      isConnecting.current = false;
-      connectionLock.current = false; // 释放连接锁
+      releaseConnectionLock('connection exception');
     }
-  }, [getWebSocketURL, autoConnect, processMessageQueue, getReconnectDelay, clearReconnectTimeout, toast]);
+  }, [getWebSocketURL, autoConnect, processMessageQueue, getReconnectDelay, clearReconnectTimeout, toast, releaseConnectionLock]);
 
   const disconnect = useCallback(() => {
     console.log('[WebSocket] Disconnecting...');
     shouldConnect.current = false;
     clearReconnectTimeout();
-    isConnecting.current = false;
-    connectionLock.current = false; // 释放连接锁
+    releaseConnectionLock('manual disconnect');
     lastUserId.current = null; // 清除用户ID记录
     
     if (ws.current) {
@@ -250,7 +252,7 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
     }
     setIsConnected(false);
     messageQueue.current = []; // Clear message queue on disconnect
-  }, [clearReconnectTimeout]);
+  }, [clearReconnectTimeout, releaseConnectionLock]);
 
   const sendMessage = useCallback((message: WSMessage) => {
     if (ws.current?.readyState === WebSocket.OPEN) {

@@ -63,7 +63,10 @@ export function BulkResumeUploader({ isOpen, onClose, onComplete }: BulkResumeUp
     setUploadResults(pdfFiles.map(file => ({ file, status: 'pending' })));
   }, [toast]);
 
-  const uploadSingleResume = async (file: File): Promise<any> => {
+  const uploadSingleResume = async (
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<any> => {
     const formData = new FormData();
     formData.append("resumes", file);
 
@@ -71,59 +74,102 @@ export function BulkResumeUploader({ isOpen, onClose, onComplete }: BulkResumeUp
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
 
-    const headers: Record<string, string> = {};
-    
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
 
-    const response = await fetch("/api/candidates/bulk-upload", {
-      method: "POST",
-      headers,
-      body: formData,
-      credentials: "include",
-    });
+      // 上传进度监听
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          onProgress?.(percentComplete);
+        }
+      };
 
-    if (!response.ok) {
-      let text = response.statusText;
-      try {
-        text = await response.text();
-      } catch (e) {
-        console.warn('Failed to read response text:', e);
+      // 请求完成
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (error) {
+            reject(new Error('解析响应失败'));
+          }
+        } else {
+          reject(new Error(`${xhr.status}: ${xhr.responseText || xhr.statusText}`));
+        }
+      };
+
+      // 请求错误
+      xhr.onerror = () => {
+        reject(new Error('网络错误，上传失败'));
+      };
+
+      // 请求超时
+      xhr.ontimeout = () => {
+        reject(new Error('上传超时，请重试'));
+      };
+
+      // 配置请求
+      xhr.open('POST', '/api/candidates/bulk-upload');
+      xhr.timeout = 60000; // 60秒超时
+
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       }
-      throw new Error(`${response.status}: ${text}`);
-    }
 
-    return response.json();
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
   };
 
   const bulkUploadMutation = useMutation({
     mutationFn: async () => {
       setIsUploading(true);
       const results: UploadResult[] = [...uploadResults];
-      
-      for (let i = 0; i < files.length; i++) {
-        setCurrentUploadIndex(i);
-        
-        try {
-          results[i].status = 'uploading';
-          results[i].progress = 0;
-          setUploadResults([...results]);
 
-          const candidate = await uploadSingleResume(files[i]);
-          
-          results[i].status = 'success';
-          results[i].candidate = candidate;
-          results[i].progress = 100;
-        } catch (error: any) {
-          results[i].status = 'error';
-          results[i].error = error.message || '上传失败';
-          results[i].progress = 0;
-        }
-        
+      // 并发上传配置：同时最多上传 3 个文件
+      const CONCURRENT_UPLOADS = 3;
+      const chunks: File[][] = [];
+
+      // 将文件分组
+      for (let i = 0; i < files.length; i += CONCURRENT_UPLOADS) {
+        chunks.push(files.slice(i, i + CONCURRENT_UPLOADS));
+      }
+
+      // 逐组并发上传
+      for (const chunk of chunks) {
+        const chunkPromises = chunk.map((file, chunkIndex) => {
+          const globalIndex = files.indexOf(file);
+
+          return uploadSingleResume(file, (progress) => {
+            // 实时更新进度
+            results[globalIndex].progress = progress;
+            setUploadResults([...results]);
+          })
+            .then((candidate) => {
+              results[globalIndex].status = 'success';
+              results[globalIndex].candidate = candidate;
+              results[globalIndex].progress = 100;
+              return { index: globalIndex, status: 'success' as const, candidate };
+            })
+            .catch((error: any) => {
+              results[globalIndex].status = 'error';
+              results[globalIndex].error = error.message || '上传失败';
+              results[globalIndex].progress = 0;
+              return { index: globalIndex, status: 'error' as const, error: error.message };
+            });
+        });
+
+        // 等待当前组所有文件上传完成（无论成功或失败）
+        results[files.indexOf(chunk[0])].status = 'uploading';
+        setUploadResults([...results]);
+
+        await Promise.allSettled(chunkPromises);
+
+        // 更新 UI
         setUploadResults([...results]);
       }
-      
+
       return results;
     },
     onSuccess: (results) => {
@@ -299,6 +345,14 @@ export function BulkResumeUploader({ isOpen, onClose, onComplete }: BulkResumeUp
                             <p className="text-xs text-green-600 mt-1">
                               已创建候选人: {result.candidate.name}
                             </p>
+                          )}
+                          {result.status === 'uploading' && result.progress !== undefined && (
+                            <div className="mt-2">
+                              <Progress value={result.progress} className="h-1" />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {result.progress}%
+                              </p>
+                            </div>
                           )}
                         </div>
                       </div>
