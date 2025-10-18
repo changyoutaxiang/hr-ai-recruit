@@ -81,6 +81,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(404).json({ error: "Not found" });
   });
 
+  // 诊断端点 - 检查环境变量配置（仅开发环境或通过特殊令牌访问）
+  app.get("/api/debug/env", (req, res) => {
+    const debugToken = req.headers['x-debug-token'];
+    const isDev = process.env.NODE_ENV === 'development';
+
+    if (!isDev && debugToken !== process.env.DEBUG_TOKEN) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    res.json({
+      environment: process.env.NODE_ENV || 'unknown',
+      vercel: process.env.VERCEL === '1',
+      envCheck: {
+        SUPABASE_URL: !!process.env.SUPABASE_URL,
+        VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+        SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+        SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        DATABASE_URL: !!process.env.DATABASE_URL,
+        OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
+      },
+      supabaseUrl: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'NOT_SET',
+      warning: !process.env.SUPABASE_SERVICE_ROLE_KEY ? '⚠️ SUPABASE_SERVICE_ROLE_KEY is missing! This will cause authentication failures.' : null,
+    });
+  });
+
   // User routes
   app.get("/api/users/:id", requireAuthWithInit, async (req: AuthRequest, res) => {
     try {
