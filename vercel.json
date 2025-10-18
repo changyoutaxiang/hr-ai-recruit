@@ -14,22 +14,10 @@
       }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "server/index.ts"
-    },
-    {
-      "src": "/assets/(.*)",
-      "dest": "dist/public/assets/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json))",
-      "dest": "dist/public/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "dist/public/index.html"
+      "source": "/api/:path*",
+      "destination": "/server/index.ts"
     }
   ],
   "headers": [
