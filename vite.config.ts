@@ -26,7 +26,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000', // ✅ 修复：匹配后端默认端口
+        target: process.env.VITE_API_URL || 'http://localhost:5001', // ✅ 修复：匹配后端端口（避免与 macOS AirPlay 冲突）
         changeOrigin: true,
         secure: false,
       },

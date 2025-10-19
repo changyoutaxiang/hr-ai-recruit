@@ -42,9 +42,9 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
   // Get the correct WebSocket URL based on current protocol
   const getWebSocketURL = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In development, connect to backend server on port 5000 (default backend port)
+    // In development, connect to backend server on port 5001 (避免与 macOS AirPlay 冲突)
     const isDevelopment = import.meta.env.DEV;
-    const backendPort = import.meta.env.VITE_BACKEND_PORT || '5000';
+    const backendPort = import.meta.env.VITE_BACKEND_PORT || '5001';
     const host = isDevelopment ? `localhost:${backendPort}` : window.location.host;
     return `${protocol}//${host}`;
   }, []);

@@ -9535,8 +9535,7 @@ async function registerRoutes(app2) {
           error: "Cannot delete candidate with existing interviews or job matches",
           details: {
             interviews: relatedInterviews.length,
-            jobMatches: relatedMatches.length,
-            message: "\u8BF7\u5148\u5220\u9664\u76F8\u5173\u7684\u9762\u8BD5\u8BB0\u5F55\u548C\u804C\u4F4D\u5339\u914D\u8BB0\u5F55"
+            jobMatches: relatedMatches.length
           }
         });
       }
