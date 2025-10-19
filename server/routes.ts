@@ -22,7 +22,7 @@ import { candidateProfileService } from "./services/candidateProfileService";
 import { organizationalFitService, type CultureFitAssessment, type LeadershipAssessment } from "./services/organizationalFitService";
 import { companyConfigService } from "./services/companyConfigService";
 import { supabaseStorageService } from "./services/supabaseStorage";
-import { requireAuth, requireAuthWithInit, requireRole, type AuthRequest } from "./middleware/auth";
+import { requireAuth, requireAuthWithInit, requireRole, resolveOrProvisionUser, type AuthRequest } from "./middleware/auth";
 import { z } from "zod";
 import multer from "multer";
 
@@ -114,7 +114,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Forbidden: Cannot access other user's data" });
       }
 
-      const user = await storage.getUser(req.params.id);
+      const requestedUserId = req.params.id;
+      let user = await storage.getUser(requestedUserId);
+
+      if (!user && req.supabaseUser && req.supabaseUser.id === requestedUserId) {
+        const provisioned = await resolveOrProvisionUser(req.supabaseUser);
+        if (provisioned) {
+          user = provisioned;
+        } else {
+          const fallbackName =
+            (typeof req.supabaseUser.user_metadata?.full_name === "string" && req.supabaseUser.user_metadata.full_name.trim().length > 0
+              ? req.supabaseUser.user_metadata.full_name
+              : req.supabaseUser.email?.split("@")[0]) || "Recruiter";
+
+          return res.json({
+            id: req.supabaseUser.id,
+            email: req.supabaseUser.email || "",
+            name: fallbackName,
+            role: "recruiter",
+          });
+        }
+      }
+
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }

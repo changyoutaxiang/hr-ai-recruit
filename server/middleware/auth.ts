@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User as SupabaseAuthUser } from '@supabase/supabase-js';
+import { storage } from '../storage';
+import type { User, InsertUser } from '@shared/schema';
 
 // 环境变量验证和详细错误提示
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
@@ -20,6 +22,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+type SupabaseUser = SupabaseAuthUser;
 
 export interface AuthRequest extends Request {
   user?: {
@@ -27,6 +30,7 @@ export interface AuthRequest extends Request {
     email: string;
     role: string;
   };
+  supabaseUser?: SupabaseUser;
 }
 
 export async function requireAuth(
@@ -49,14 +53,11 @@ export async function requireAuth(
       return res.status(401).json({ error: 'Unauthorized: Invalid token' });
     }
 
-    const { data: userProfile } = await supabase
-      .from('users')
-      .select('id, email, role')
-      .eq('id', user.id)
-      .single();
+    req.supabaseUser = user;
 
+    const userProfile = await resolveOrProvisionUser(user);
     if (!userProfile) {
-      return res.status(401).json({ error: 'Unauthorized: User not found' });
+      return res.status(401).json({ error: 'Unauthorized: User profile missing' });
     }
 
     req.user = {
@@ -70,6 +71,59 @@ export async function requireAuth(
     console.error('Auth middleware error:', error);
     return res.status(401).json({ error: 'Unauthorized' });
   }
+}
+
+export async function resolveOrProvisionUser(
+  supabaseUser: SupabaseUser
+): Promise<User | undefined> {
+  try {
+    const existing = await storage.getUser(supabaseUser.id);
+    if (existing) {
+      return existing;
+    }
+  } catch (error) {
+    console.error('[Auth] ⚠️ Failed to load user from storage:', error);
+  }
+
+  const email = supabaseUser.email;
+  if (!email) {
+    console.warn('[Auth] Supabase user has no email, cannot auto-provision profile.');
+    return undefined;
+  }
+
+  const derivedName =
+    (typeof supabaseUser.user_metadata?.full_name === 'string' && supabaseUser.user_metadata.full_name.trim().length > 0
+      ? supabaseUser.user_metadata.full_name
+      : email.split('@')[0]) || 'Recruiter';
+
+  const payload: InsertUser = {
+    email,
+    password: 'supabase-managed',
+    name: derivedName,
+    role: 'recruiter',
+  };
+
+  try {
+    const created = await storage.createUser({ ...payload, id: supabaseUser.id });
+    console.log('[Auth] ✅ Auto-provisioned user profile for', email);
+    return created;
+  } catch (error: any) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/duplicate key|unique constraint/i.test(message)) {
+      try {
+        const existing = await storage.getUser(supabaseUser.id);
+        if (existing) {
+          return existing;
+        }
+      } catch (secondError) {
+        console.error('[Auth] ⚠️ Failed to reload user after duplicate error:', secondError);
+      }
+    } else {
+      console.error('[Auth] ❌ Failed to auto-provision user profile:', error);
+    }
+  }
+
+  return undefined;
 }
 
 // 新的中间件：允许用户初始化（即使用户在数据库中不存在）
@@ -104,56 +158,24 @@ export async function requireAuthWithInit(
     }
 
     console.log('[Auth] ✅ Token valid for user:', user.id);
+    req.supabaseUser = user;
 
-    // Step 3: 尝试从数据库获取用户配置文件
-    try {
-      const { data: userProfile, error: dbError } = await supabase
-        .from('users')
-        .select('id, email, role')
-        .eq('id', user.id)
-        .single();
-
-      if (dbError) {
-        // 数据库查询失败（可能是配置问题）
-        console.error('[Auth] ⚠️ Database query error:', dbError.message);
-        console.error('[Auth] 💡 Hint: Check if SUPABASE_SERVICE_ROLE_KEY is configured in Vercel');
-
-        // 降级处理：使用 Supabase Auth 信息
-        req.user = {
-          id: user.id,
-          email: user.email || '',
-          role: 'recruiter',
-        };
-        console.warn('[Auth] ⚠️ Using fallback user data from Supabase Auth');
-      } else if (userProfile) {
-        // 用户存在，设置用户信息
-        req.user = {
-          id: userProfile.id,
-          email: userProfile.email,
-          role: userProfile.role,
-        };
-        console.log('[Auth] ✅ User profile loaded:', userProfile.email);
-      } else {
-        // 用户不存在，但 Supabase 认证有效，设置基本用户信息
-        req.user = {
-          id: user.id,
-          email: user.email || '',
-          role: 'recruiter', // 默认角色
-        };
-        console.log('[Auth] ℹ️ User not in database, using auth data:', user.email);
-      }
-    } catch (dbException: any) {
-      // 捕获数据库异常（如连接失败）
-      console.error('[Auth] ❌ Database exception:', dbException.message);
-      console.error('[Auth] 💡 This usually means DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing');
-
-      // 降级处理：使用 Supabase Auth 信息
+    // Step 3: 尝试加载或自动创建用户配置文件
+    const resolvedProfile = await resolveOrProvisionUser(user);
+    if (resolvedProfile) {
+      req.user = {
+        id: resolvedProfile.id,
+        email: resolvedProfile.email,
+        role: resolvedProfile.role,
+      };
+      console.log('[Auth] ✅ User profile ready:', resolvedProfile.email);
+    } else {
       req.user = {
         id: user.id,
         email: user.email || '',
         role: 'recruiter',
       };
-      console.warn('[Auth] ⚠️ Database unavailable, using fallback user data');
+      console.warn('[Auth] ⚠️ Falling back to Supabase auth data for user:', user.email);
     }
 
     next();
