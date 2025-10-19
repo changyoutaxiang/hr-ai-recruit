@@ -11591,22 +11591,42 @@ async function getApp() {
   app.use("/api", apiLimiter);
   app.use("/api/ai", aiLimiter);
   const isProduction = process.env.NODE_ENV === "production";
+  function parseAllowedOrigins(corsOriginEnv) {
+    if (!corsOriginEnv) return [];
+    const origins = corsOriginEnv.split(",").map((o) => o.trim()).filter(Boolean);
+    for (const origin of origins) {
+      if (origin === "*") {
+        console.error("[CORS] \u274C Wildcard origin not allowed in configuration");
+        throw new Error("Wildcard CORS origin not permitted");
+      }
+      try {
+        const url = new URL(origin);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          throw new Error(`Invalid protocol: ${url.protocol}`);
+        }
+      } catch (err) {
+        console.error(`[CORS] \u274C Invalid origin URL: ${origin}`, err);
+        throw new Error(`Invalid CORS origin configuration: ${origin}`);
+      }
+    }
+    return origins;
+  }
+  const configuredOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+  const VERCEL_DOMAIN_REGEX = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+  const APP_DOMAIN_REGEX = /^https:\/\/(www\.)?hr-ai-recruit\.com$/;
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) {
         return callback(null, true);
       }
       if (isProduction) {
-        if (process.env.CORS_ORIGIN) {
-          const allowedOrigins = process.env.CORS_ORIGIN.split(",").map((o) => o.trim());
-          if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-          }
-        }
-        if (origin.includes("vercel.app") || origin.includes("hr-ai-recruit")) {
+        if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
           return callback(null, true);
         }
-        console.warn(`[CORS] Blocked origin: ${origin}`);
+        if (VERCEL_DOMAIN_REGEX.test(origin) || APP_DOMAIN_REGEX.test(origin)) {
+          return callback(null, true);
+        }
+        console.warn("[CORS] \u26A0\uFE0F Blocked unauthorized origin");
         return callback(new Error("Not allowed by CORS"));
       }
       if (origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {

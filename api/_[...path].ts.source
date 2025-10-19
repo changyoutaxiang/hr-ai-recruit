@@ -71,8 +71,44 @@ async function getApp() {
   app.use('/api', apiLimiter);
   app.use('/api/ai', aiLimiter);
 
-  // CORS - 优先使用环境变量，开发环境允许所有本地地址
+  // CORS - 安全的域名验证配置
   const isProduction = process.env.NODE_ENV === 'production';
+
+  // 验证和解析 CORS_ORIGIN 环境变量
+  function parseAllowedOrigins(corsOriginEnv: string | undefined): string[] {
+    if (!corsOriginEnv) return [];
+
+    const origins = corsOriginEnv.split(',').map(o => o.trim()).filter(Boolean);
+
+    // 验证每个配置的源
+    for (const origin of origins) {
+      // 拒绝通配符
+      if (origin === '*') {
+        console.error('[CORS] ❌ Wildcard origin not allowed in configuration');
+        throw new Error('Wildcard CORS origin not permitted');
+      }
+
+      // 验证 URL 格式
+      try {
+        const url = new URL(origin);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          throw new Error(`Invalid protocol: ${url.protocol}`);
+        }
+      } catch (err) {
+        console.error(`[CORS] ❌ Invalid origin URL: ${origin}`, err);
+        throw new Error(`Invalid CORS origin configuration: ${origin}`);
+      }
+    }
+
+    return origins;
+  }
+
+  // 解析和验证配置的源
+  const configuredOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+
+  // 生产环境域名正则（精确匹配，防止子串攻击）
+  const VERCEL_DOMAIN_REGEX = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+  const APP_DOMAIN_REGEX = /^https:\/\/(www\.)?hr-ai-recruit\.com$/;
 
   app.use(cors({
     origin: (origin, callback) => {
@@ -81,19 +117,20 @@ async function getApp() {
         return callback(null, true);
       }
 
-      // 生产环境：必须配置 CORS_ORIGIN
+      // 生产环境：严格的域名验证
       if (isProduction) {
-        if (process.env.CORS_ORIGIN) {
-          const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
-          if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-          }
-        }
-        // 允许同域请求（Vercel 部署域名）
-        if (origin.includes('vercel.app') || origin.includes('hr-ai-recruit')) {
+        // 1. 优先使用环境变量配置的源
+        if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
           return callback(null, true);
         }
-        console.warn(`[CORS] Blocked origin: ${origin}`);
+
+        // 2. 使用正则表达式精确匹配 Vercel 部署域名
+        if (VERCEL_DOMAIN_REGEX.test(origin) || APP_DOMAIN_REGEX.test(origin)) {
+          return callback(null, true);
+        }
+
+        // 3. 记录被拒绝的请求（生产环境不暴露详细信息）
+        console.warn('[CORS] ⚠️ Blocked unauthorized origin');
         return callback(new Error('Not allowed by CORS'));
       }
 
