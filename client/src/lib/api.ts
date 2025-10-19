@@ -25,7 +25,10 @@ export async function apiRequest(
 
     const headers: Record<string, string> = {};
 
-    if (data) {
+    // 检查是否为 FormData，如果是则不设置 Content-Type（浏览器会自动设置边界）
+    const isFormData = data instanceof FormData;
+
+    if (data && !isFormData) {
       headers["Content-Type"] = "application/json";
     }
 
@@ -41,7 +44,7 @@ export async function apiRequest(
     const res = await fetch(url, {
       method,
       headers,
-      body: data ? JSON.stringify(data) : undefined,
+      body: isFormData ? data : (data ? JSON.stringify(data) : undefined),
       credentials: "include",
       signal: combinedSignal,
     });

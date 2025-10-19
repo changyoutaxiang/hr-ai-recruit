@@ -39,6 +39,7 @@ import { InterviewerBrief } from "@/components/interviewer-brief";
 import { InterviewFormDialog } from "@/components/interview-form-dialog";
 import { ErrorBoundary, ChartErrorBoundary } from "@/components/error-boundary";
 import type { Candidate, CandidateProfile, Interview } from "@shared/schema";
+import { apiRequest } from "@/lib/api";
 
 // 常量定义
 const ROUND_LABELS: Record<number, string> = {
@@ -99,8 +100,7 @@ export default function CandidateDetailPage() {
   } = useQuery<Interview[]>({
     queryKey: ["/api/interviews", { candidateId }],
     queryFn: async () => {
-      const res = await fetch(`/api/interviews?candidateId=${candidateId}`);
-      if (!res.ok) throw new Error("Failed to fetch interviews");
+      const res = await apiRequest("GET", `/api/interviews?candidateId=${candidateId}`);
       return res.json();
     },
     enabled: !!candidateId,
@@ -110,17 +110,9 @@ export default function CandidateDetailPage() {
 
   const buildProfileMutation = useMutation({
     mutationFn: async (jobId?: string) => {
-      const res = await fetch(`/api/candidates/${candidateId}/profiles/build`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId }),
+      const res = await apiRequest("POST", `/api/candidates/${candidateId}/profiles/build`, {
+        jobId,
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "构建画像失败");
-      }
-
       return res.json();
     },
     onSuccess: () => {
@@ -163,17 +155,9 @@ export default function CandidateDetailPage() {
   // 生成面试准备材料
   const generateInterviewPreparationMutation = useMutation({
     mutationFn: async (interviewId: string) => {
-      const res = await fetch(`/api/interviews/${interviewId}/preparation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidateId }),
+      const res = await apiRequest("POST", `/api/interviews/${interviewId}/preparation`, {
+        candidateId,
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "生成面试准备失败");
-      }
-
       return res.json();
     },
     onSuccess: (data) => {
@@ -196,17 +180,10 @@ export default function CandidateDetailPage() {
   // 生成招聘决策
   const generateHiringDecisionMutation = useMutation({
     mutationFn: async (jobId: string) => {
-      const res = await fetch("/api/hiring-decisions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidateId, jobId }),
+      const res = await apiRequest("POST", "/api/hiring-decisions", {
+        candidateId,
+        jobId,
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "生成招聘决策失败");
-      }
-
       return res.json();
     },
     onSuccess: (data) => {
@@ -482,10 +459,7 @@ export default function CandidateDetailPage() {
                       className="w-full"
                       onClick={async () => {
                         try {
-                          const response = await fetch(`/api/candidates/${candidate.id}/resume/download`);
-                          if (!response.ok) {
-                            throw new Error('Failed to get download URL');
-                          }
+                          const response = await apiRequest("GET", `/api/candidates/${candidate.id}/resume/download`);
                           const data = await response.json();
                           window.open(data.url, '_blank');
                         } catch (error) {

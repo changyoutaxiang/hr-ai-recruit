@@ -10,6 +10,7 @@ import { Sidebar } from "@/components/ui/sidebar";
 import { useLanguage } from "@/contexts/language-context";
 import { TrendingUp, TrendingDown, Users, Calendar, CheckCircle, XCircle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, FunnelChart, Funnel, Cell, LabelList } from "recharts";
+import { apiRequest } from "@/lib/api";
 
 interface FunnelData {
   stage: string;
@@ -41,10 +42,7 @@ export default function FunnelPage() {
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
     queryFn: async () => {
-      const response = await fetch("/api/dashboard/metrics");
-      if (!response.ok) {
-        throw new Error("Failed to fetch metrics");
-      }
+      const response = await apiRequest("GET", "/api/dashboard/metrics");
       return response.json();
     },
   });

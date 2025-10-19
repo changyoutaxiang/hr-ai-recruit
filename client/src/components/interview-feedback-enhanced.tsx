@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
 import {
   Star,
   Plus,
@@ -350,13 +351,9 @@ export function InterviewFeedbackEnhanced({
       formData.append('audio', audioBlob, 'interview-recording.wav');
       formData.append('interviewId', interview.id);
 
-      const response = await fetch('/api/interviews/transcribe', {
-        method: 'POST',
-        body: formData,
+      const response = await apiRequest('POST', '/api/interviews/transcribe', formData, {
         signal: abortController.signal,
       });
-
-      if (!response.ok) throw new Error('转录失败');
 
       const data = await response.json();
 
@@ -409,21 +406,15 @@ export function InterviewFeedbackEnhanced({
     setAiAssistantActive(true);
 
     try {
-      const response = await fetch('/api/interviews/ai-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          interviewId: interview.id,
-          content: transcription || manualNotes,
-          candidateInfo: {
-            name: candidate.name,
-            position: candidate.position,
-            experience: candidate.experience
-          }
-        })
+      const response = await apiRequest('POST', '/api/interviews/ai-analyze', {
+        interviewId: interview.id,
+        content: transcription || manualNotes,
+        candidateInfo: {
+          name: candidate.name,
+          position: candidate.position,
+          experience: candidate.experience
+        }
       });
-
-      if (!response.ok) throw new Error('AI分析失败');
 
       const data = await response.json();
 
@@ -491,16 +482,7 @@ export function InterviewFeedbackEnhanced({
         additionalNotes: additionalNotes || undefined
       };
 
-      const response = await fetch(`/api/interviews/${interview.id}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedbackData)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit feedback');
-      }
-
+      const response = await apiRequest('POST', `/api/interviews/${interview.id}/feedback`, feedbackData);
       return response.json();
     },
     onSuccess: (data) => {
