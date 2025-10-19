@@ -79,13 +79,13 @@ export default function PreferencesPage() {
       }
       
       toast({
-        title: "设置已保存",
-        description: "您的偏好设置已成功更新",
+        title: t('preferences.toast.savedTitle'),
+        description: t('preferences.toast.savedDescription'),
       });
     } catch (error) {
       toast({
-        title: "保存失败",
-        description: "保存设置时出现错误，请重试",
+        title: t('preferences.toast.saveFailed'),
+        description: t('preferences.toast.saveFailedDescription'),
         variant: "destructive",
       });
     } finally {
@@ -106,8 +106,8 @@ export default function PreferencesPage() {
     }));
     
     toast({
-      title: "设置已重置",
-      description: "偏好设置已恢复为默认值",
+      title: t('preferences.toast.resetTitle'),
+      description: t('preferences.toast.resetDescription'),
     });
   };
 
@@ -122,7 +122,7 @@ export default function PreferencesPage() {
             <Settings className="h-6 w-6" />
             <div>
               <h1 className="text-2xl font-semibold text-foreground">{t('nav.preferences')}</h1>
-              <p className="text-sm text-muted-foreground">管理您的个人偏好和系统设置</p>
+              <p className="text-sm text-muted-foreground">{t('preferences.subtitle')}</p>
             </div>
           </div>
         </header>
@@ -136,49 +136,49 @@ export default function PreferencesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              个人信息
+              {t('preferences.personalInfo.title')}
             </CardTitle>
             <CardDescription>
-              更新您的个人资料信息
+              {t('preferences.personalInfo.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="displayName">显示名称</Label>
+                <Label htmlFor="displayName">{t('preferences.personalInfo.displayName')}</Label>
                 <Input
                   id="displayName"
                   value={preferences.displayName}
                   onChange={(e) => setPreferences(prev => ({ ...prev, displayName: e.target.value }))}
-                  placeholder="请输入您的显示名称"
+                  placeholder={t('preferences.personalInfo.displayNamePlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">邮箱地址</Label>
+                <Label htmlFor="email">{t('preferences.personalInfo.email')}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={preferences.email}
                   onChange={(e) => setPreferences(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="请输入邮箱地址"
+                  placeholder={t('preferences.personalInfo.emailPlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">联系电话</Label>
+                <Label htmlFor="phone">{t('preferences.personalInfo.phone')}</Label>
                 <Input
                   id="phone"
                   value={preferences.phone}
                   onChange={(e) => setPreferences(prev => ({ ...prev, phone: e.target.value }))}
-                  placeholder="请输入联系电话"
+                  placeholder={t('preferences.personalInfo.phonePlaceholder')}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="department">部门</Label>
+                <Label htmlFor="department">{t('preferences.personalInfo.department')}</Label>
                 <Input
                   id="department"
                   value={preferences.department}
                   onChange={(e) => setPreferences(prev => ({ ...prev, department: e.target.value }))}
-                  placeholder="请输入所属部门"
+                  placeholder={t('preferences.personalInfo.departmentPlaceholder')}
                 />
               </div>
             </div>
@@ -190,18 +190,18 @@ export default function PreferencesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bell className="h-5 w-5" />
-              通知设置
+              {t('preferences.notifications.title')}
             </CardTitle>
             <CardDescription>
-              管理您希望接收的通知类型
+              {t('preferences.notifications.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>邮件通知</Label>
-                  <p className="text-sm text-muted-foreground">接收重要更新的邮件通知</p>
+                  <Label>{t('preferences.notifications.email')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.notifications.emailDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.emailNotifications}
@@ -210,8 +210,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>推送通知</Label>
-                  <p className="text-sm text-muted-foreground">接收浏览器推送通知</p>
+                  <Label>{t('preferences.notifications.push')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.notifications.pushDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.pushNotifications}
@@ -220,8 +220,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>候选人更新</Label>
-                  <p className="text-sm text-muted-foreground">候选人状态变更时通知</p>
+                  <Label>{t('preferences.notifications.candidateUpdates')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.notifications.candidateUpdatesDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.candidateUpdates}
@@ -230,8 +230,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>面试提醒</Label>
-                  <p className="text-sm text-muted-foreground">面试前发送提醒通知</p>
+                  <Label>{t('preferences.notifications.interviewReminders')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.notifications.interviewRemindersDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.interviewReminders}
@@ -240,8 +240,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>系统警报</Label>
-                  <p className="text-sm text-muted-foreground">接收系统维护和错误警报</p>
+                  <Label>{t('preferences.notifications.systemAlerts')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.notifications.systemAlertsDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.systemAlerts}
@@ -257,16 +257,16 @@ export default function PreferencesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-5 w-5" />
-              界面设置
+              {t('preferences.appearance.title')}
             </CardTitle>
             <CardDescription>
-              自定义您的界面外观和行为
+              {t('preferences.appearance.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>语言</Label>
+                <Label>{t('preferences.appearance.language')}</Label>
                 <Select
                   value={preferences.language}
                   onValueChange={(value) => setPreferences(prev => ({ ...prev, language: value as Language }))}
@@ -275,13 +275,13 @@ export default function PreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zh">中文</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="zh">{t('preferences.appearance.languageZh')}</SelectItem>
+                    <SelectItem value="en">{t('preferences.appearance.languageEn')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>主题</Label>
+                <Label>{t('preferences.appearance.theme')}</Label>
                 <Select
                   value={preferences.theme}
                   onValueChange={(value) => setPreferences(prev => ({ ...prev, theme: value }))}
@@ -290,14 +290,14 @@ export default function PreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="light">浅色</SelectItem>
-                    <SelectItem value="dark">深色</SelectItem>
-                    <SelectItem value="system">跟随系统</SelectItem>
+                    <SelectItem value="light">{t('preferences.appearance.themeLight')}</SelectItem>
+                    <SelectItem value="dark">{t('preferences.appearance.themeDark')}</SelectItem>
+                    <SelectItem value="system">{t('preferences.appearance.themeSystem')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>时区</Label>
+                <Label>{t('preferences.appearance.timezone')}</Label>
                 <Select
                   value={preferences.timezone}
                   onValueChange={(value) => setPreferences(prev => ({ ...prev, timezone: value }))}
@@ -306,15 +306,15 @@ export default function PreferencesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Asia/Shanghai">北京时间 (UTC+8)</SelectItem>
-                    <SelectItem value="America/New_York">纽约时间 (UTC-5)</SelectItem>
-                    <SelectItem value="Europe/London">伦敦时间 (UTC+0)</SelectItem>
-                    <SelectItem value="Asia/Tokyo">东京时间 (UTC+9)</SelectItem>
+                    <SelectItem value="Asia/Shanghai">{t('preferences.appearance.timezoneBeijing')}</SelectItem>
+                    <SelectItem value="America/New_York">{t('preferences.appearance.timezoneNewYork')}</SelectItem>
+                    <SelectItem value="Europe/London">{t('preferences.appearance.timezoneLondon')}</SelectItem>
+                    <SelectItem value="Asia/Tokyo">{t('preferences.appearance.timezoneTokyo')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>日期格式</Label>
+                <Label>{t('preferences.appearance.dateFormat')}</Label>
                 <Select
                   value={preferences.dateFormat}
                   onValueChange={(value) => setPreferences(prev => ({ ...prev, dateFormat: value }))}
@@ -339,18 +339,18 @@ export default function PreferencesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5" />
-              AI 助手设置
+              {t('preferences.aiAssistant.title')}
             </CardTitle>
             <CardDescription>
-              配置 AI 功能和自动化选项
+              {t('preferences.aiAssistant.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>启用 AI 助手</Label>
-                  <p className="text-sm text-muted-foreground">使用 AI 协助招聘流程</p>
+                  <Label>{t('preferences.aiAssistant.enabled')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.aiAssistant.enabledDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.aiAssistantEnabled}
@@ -359,8 +359,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>自动生成候选人画像</Label>
-                  <p className="text-sm text-muted-foreground">上传简历后自动分析生成画像</p>
+                  <Label>{t('preferences.aiAssistant.autoGenerateProfiles')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.aiAssistant.autoGenerateProfilesDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.autoGenerateProfiles}
@@ -369,8 +369,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>AI 建议</Label>
-                  <p className="text-sm text-muted-foreground">显示 AI 生成的建议和洞察</p>
+                  <Label>{t('preferences.aiAssistant.suggestions')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.aiAssistant.suggestionsDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.aiSuggestions}
@@ -386,16 +386,16 @@ export default function PreferencesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />
-              工作流设置
+              {t('preferences.workflow.title')}
             </CardTitle>
             <CardDescription>
-              配置招聘流程的默认行为
+              {t('preferences.workflow.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>默认面试时长（分钟）</Label>
+                <Label>{t('preferences.workflow.defaultInterviewDuration')}</Label>
                 <Input
                   type="number"
                   value={preferences.defaultInterviewDuration.toString()}
@@ -409,8 +409,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>自动安排后续面试</Label>
-                  <p className="text-sm text-muted-foreground">面试结束后自动安排下一轮</p>
+                  <Label>{t('preferences.workflow.autoScheduleFollowups')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.workflow.autoScheduleFollowupsDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.autoScheduleFollowups}
@@ -419,8 +419,8 @@ export default function PreferencesPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label>决策需要审批</Label>
-                  <p className="text-sm text-muted-foreground">录用决策需要上级审批</p>
+                  <Label>{t('preferences.workflow.requireApprovalForDecisions')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('preferences.workflow.requireApprovalForDecisionsDesc')}</p>
                 </div>
                 <Switch
                   checked={preferences.requireApprovalForDecisions}
@@ -434,29 +434,29 @@ export default function PreferencesPage() {
         {/* 自定义设置 */}
         <Card>
           <CardHeader>
-            <CardTitle>自定义设置</CardTitle>
+            <CardTitle>{t('preferences.customization.title')}</CardTitle>
             <CardDescription>
-              个性化您的工作环境
+              {t('preferences.customization.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="signature">邮件签名</Label>
+              <Label htmlFor="signature">{t('preferences.customization.signature')}</Label>
               <Textarea
                 id="signature"
                 value={preferences.signature}
                 onChange={(e) => setPreferences(prev => ({ ...prev, signature: e.target.value }))}
-                placeholder="请输入您的邮件签名..."
+                placeholder={t('preferences.customization.signaturePlaceholder')}
                 rows={3}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">个人备注</Label>
+              <Label htmlFor="notes">{t('preferences.customization.notes')}</Label>
               <Textarea
                 id="notes"
                 value={preferences.notes}
                 onChange={(e) => setPreferences(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="记录一些个人备注或提醒..."
+                placeholder={t('preferences.customization.notesPlaceholder')}
                 rows={3}
               />
             </div>
@@ -472,7 +472,7 @@ export default function PreferencesPage() {
                   data-testid="button-reset-preferences"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  重置为默认
+                  {t('preferences.buttons.resetToDefault')}
                 </Button>
 
                 <Button
@@ -482,7 +482,7 @@ export default function PreferencesPage() {
                   data-testid="button-save-preferences"
                 >
                   <Save className="h-4 w-4" />
-                  {isLoading ? "保存中..." : t('common.save') + "设置"}
+                  {isLoading ? t('common.saving') : t('preferences.buttons.saveSettings')}
                 </Button>
               </div>
             </div>

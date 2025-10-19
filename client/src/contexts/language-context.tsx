@@ -22,6 +22,7 @@ interface Translations {
 const translations: Translations = {
   // 通用
   'common.loading': { en: 'Loading...', zh: '加载中...' },
+  'common.saving': { en: 'Saving...', zh: '保存中...' },
   'common.save': { en: 'Save', zh: '保存' },
   'common.cancel': { en: 'Cancel', zh: '取消' },
   'common.delete': { en: 'Delete', zh: '删除' },
@@ -42,6 +43,7 @@ const translations: Translations = {
   'common.export': { en: 'Export', zh: '导出' },
   'common.import': { en: 'Import', zh: '导入' },
   'common.action': { en: 'Action', zh: '操作' },
+  'common.success': { en: 'Success', zh: '成功' },
 
   // 品牌
   'brand.name': { en: 'AI Recruit', zh: 'AI 招聘' },
@@ -343,6 +345,91 @@ const translations: Translations = {
   // 模板页面
   'templates.pageTitle': { en: 'Prompt Templates', zh: '提示模板' },
   'templates.pageSubtitle': { en: 'Manage AI prompt templates for consistent recruitment workflows', zh: '管理AI提示模板以保持招聘流程的一致性' },
+
+  // 偏好设置页面
+  'preferences.subtitle': { en: 'Manage your personal preferences and system settings', zh: '管理您的个人偏好和系统设置' },
+
+  // 个人信息
+  'preferences.personalInfo.title': { en: 'Personal Information', zh: '个人信息' },
+  'preferences.personalInfo.description': { en: 'Update your personal profile information', zh: '更新您的个人资料信息' },
+  'preferences.personalInfo.displayName': { en: 'Display Name', zh: '显示名称' },
+  'preferences.personalInfo.displayNamePlaceholder': { en: 'Enter your display name', zh: '请输入您的显示名称' },
+  'preferences.personalInfo.email': { en: 'Email Address', zh: '邮箱地址' },
+  'preferences.personalInfo.emailPlaceholder': { en: 'Enter your email address', zh: '请输入邮箱地址' },
+  'preferences.personalInfo.phone': { en: 'Contact Phone', zh: '联系电话' },
+  'preferences.personalInfo.phonePlaceholder': { en: 'Enter your phone number', zh: '请输入联系电话' },
+  'preferences.personalInfo.department': { en: 'Department', zh: '部门' },
+  'preferences.personalInfo.departmentPlaceholder': { en: 'Enter your department', zh: '请输入所属部门' },
+
+  // 通知设置
+  'preferences.notifications.title': { en: 'Notification Settings', zh: '通知设置' },
+  'preferences.notifications.description': { en: 'Manage the types of notifications you want to receive', zh: '管理您希望接收的通知类型' },
+  'preferences.notifications.email': { en: 'Email Notifications', zh: '邮件通知' },
+  'preferences.notifications.emailDesc': { en: 'Receive email notifications for important updates', zh: '接收重要更新的邮件通知' },
+  'preferences.notifications.push': { en: 'Push Notifications', zh: '推送通知' },
+  'preferences.notifications.pushDesc': { en: 'Receive browser push notifications', zh: '接收浏览器推送通知' },
+  'preferences.notifications.candidateUpdates': { en: 'Candidate Updates', zh: '候选人更新' },
+  'preferences.notifications.candidateUpdatesDesc': { en: 'Notify when candidate status changes', zh: '候选人状态变更时通知' },
+  'preferences.notifications.interviewReminders': { en: 'Interview Reminders', zh: '面试提醒' },
+  'preferences.notifications.interviewRemindersDesc': { en: 'Send reminder notifications before interviews', zh: '面试前发送提醒通知' },
+  'preferences.notifications.systemAlerts': { en: 'System Alerts', zh: '系统警报' },
+  'preferences.notifications.systemAlertsDesc': { en: 'Receive system maintenance and error alerts', zh: '接收系统维护和错误警报' },
+
+  // 界面设置
+  'preferences.appearance.title': { en: 'Appearance Settings', zh: '界面设置' },
+  'preferences.appearance.description': { en: 'Customize your interface appearance and behavior', zh: '自定义您的界面外观和行为' },
+  'preferences.appearance.language': { en: 'Language', zh: '语言' },
+  'preferences.appearance.languageZh': { en: 'Chinese', zh: '中文' },
+  'preferences.appearance.languageEn': { en: 'English', zh: 'English' },
+  'preferences.appearance.theme': { en: 'Theme', zh: '主题' },
+  'preferences.appearance.themeLight': { en: 'Light', zh: '浅色' },
+  'preferences.appearance.themeDark': { en: 'Dark', zh: '深色' },
+  'preferences.appearance.themeSystem': { en: 'Follow System', zh: '跟随系统' },
+  'preferences.appearance.timezone': { en: 'Timezone', zh: '时区' },
+  'preferences.appearance.timezoneBeijing': { en: 'Beijing Time (UTC+8)', zh: '北京时间 (UTC+8)' },
+  'preferences.appearance.timezoneNewYork': { en: 'New York Time (UTC-5)', zh: '纽约时间 (UTC-5)' },
+  'preferences.appearance.timezoneLondon': { en: 'London Time (UTC+0)', zh: '伦敦时间 (UTC+0)' },
+  'preferences.appearance.timezoneTokyo': { en: 'Tokyo Time (UTC+9)', zh: '东京时间 (UTC+9)' },
+  'preferences.appearance.dateFormat': { en: 'Date Format', zh: '日期格式' },
+
+  // AI 助手设置
+  'preferences.aiAssistant.title': { en: 'AI Assistant Settings', zh: 'AI 助手设置' },
+  'preferences.aiAssistant.description': { en: 'Configure AI features and automation options', zh: '配置 AI 功能和自动化选项' },
+  'preferences.aiAssistant.enabled': { en: 'Enable AI Assistant', zh: '启用 AI 助手' },
+  'preferences.aiAssistant.enabledDesc': { en: 'Use AI to assist with recruitment processes', zh: '使用 AI 协助招聘流程' },
+  'preferences.aiAssistant.autoGenerateProfiles': { en: 'Auto-generate Candidate Profiles', zh: '自动生成候选人画像' },
+  'preferences.aiAssistant.autoGenerateProfilesDesc': { en: 'Automatically analyze and generate profiles after resume upload', zh: '上传简历后自动分析生成画像' },
+  'preferences.aiAssistant.suggestions': { en: 'AI Suggestions', zh: 'AI 建议' },
+  'preferences.aiAssistant.suggestionsDesc': { en: 'Show AI-generated suggestions and insights', zh: '显示 AI 生成的建议和洞察' },
+
+  // 工作流设置
+  'preferences.workflow.title': { en: 'Workflow Settings', zh: '工作流设置' },
+  'preferences.workflow.description': { en: 'Configure default behavior for recruitment processes', zh: '配置招聘流程的默认行为' },
+  'preferences.workflow.defaultInterviewDuration': { en: 'Default Interview Duration (minutes)', zh: '默认面试时长（分钟）' },
+  'preferences.workflow.autoScheduleFollowups': { en: 'Auto-schedule Follow-up Interviews', zh: '自动安排后续面试' },
+  'preferences.workflow.autoScheduleFollowupsDesc': { en: 'Automatically schedule next round after interview completion', zh: '面试结束后自动安排下一轮' },
+  'preferences.workflow.requireApprovalForDecisions': { en: 'Require Approval for Decisions', zh: '决策需要审批' },
+  'preferences.workflow.requireApprovalForDecisionsDesc': { en: 'Hiring decisions require supervisor approval', zh: '录用决策需要上级审批' },
+
+  // 自定义设置
+  'preferences.customization.title': { en: 'Customization Settings', zh: '自定义设置' },
+  'preferences.customization.description': { en: 'Personalize your work environment', zh: '个性化您的工作环境' },
+  'preferences.customization.signature': { en: 'Email Signature', zh: '邮件签名' },
+  'preferences.customization.signaturePlaceholder': { en: 'Enter your email signature...', zh: '请输入您的邮件签名...' },
+  'preferences.customization.notes': { en: 'Personal Notes', zh: '个人备注' },
+  'preferences.customization.notesPlaceholder': { en: 'Record some personal notes or reminders...', zh: '记录一些个人备注或提醒...' },
+
+  // 偏好设置按钮
+  'preferences.buttons.resetToDefault': { en: 'Reset to Default', zh: '重置为默认' },
+  'preferences.buttons.saveSettings': { en: 'Save Settings', zh: '保存设置' },
+
+  // 偏好设置 Toast 消息
+  'preferences.toast.savedTitle': { en: 'Settings Saved', zh: '设置已保存' },
+  'preferences.toast.savedDescription': { en: 'Your preferences have been updated successfully', zh: '您的偏好设置已成功更新' },
+  'preferences.toast.saveFailed': { en: 'Save Failed', zh: '保存失败' },
+  'preferences.toast.saveFailedDescription': { en: 'An error occurred while saving settings, please try again', zh: '保存设置时出现错误，请重试' },
+  'preferences.toast.resetTitle': { en: 'Settings Reset', zh: '设置已重置' },
+  'preferences.toast.resetDescription': { en: 'Preferences have been restored to default values', zh: '偏好设置已恢复为默认值' },
 
   // 404错误页面
   'notFound.title': { en: '404 Page Not Found', zh: '404 页面未找到' },
