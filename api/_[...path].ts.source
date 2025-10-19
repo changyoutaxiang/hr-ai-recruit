@@ -71,32 +71,38 @@ async function getApp() {
   app.use('/api', apiLimiter);
   app.use('/api/ai', aiLimiter);
 
-  // CORS
-  const allowedOrigins = [
-    'http://localhost:5000',
-    'http://localhost:3000',
-    'http://127.0.0.1:5000',
-    'http://127.0.0.1:3000',
-  ];
-
-  if (process.env.CORS_ORIGIN) {
-    const envOrigins = process.env.CORS_ORIGIN.split(',').map(origin => origin.trim());
-    allowedOrigins.push(...envOrigins);
-  }
+  // CORS - 优先使用环境变量，开发环境允许所有本地地址
+  const isProduction = process.env.NODE_ENV === 'production';
 
   app.use(cors({
     origin: (origin, callback) => {
-      const finalOrigins = [...new Set(allowedOrigins)];
-
+      // 在 Vercel 上，同源请求 origin 为 undefined
       if (!origin) {
         return callback(null, true);
       }
 
-      if (finalOrigins.includes(origin) || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+      // 生产环境：必须配置 CORS_ORIGIN
+      if (isProduction) {
+        if (process.env.CORS_ORIGIN) {
+          const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+        }
+        // 允许同域请求（Vercel 部署域名）
+        if (origin.includes('vercel.app') || origin.includes('hr-ai-recruit')) {
+          return callback(null, true);
+        }
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        return callback(new Error('Not allowed by CORS'));
       }
+
+      // 开发环境：允许所有本地地址
+      if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+        return callback(null, true);
+      }
+
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     optionsSuccessStatus: 200,

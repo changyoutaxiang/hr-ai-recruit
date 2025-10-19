@@ -2224,16 +2224,16 @@ var init_aiService = __esm({
       }
     });
     MODELS = {
-      // 简历分析使用最强旗舰模型 GPT-5，确保最高准确性
-      RESUME_ANALYSIS: process.env.RESUME_AI_MODEL || "openai/gpt-5",
+      // 简历分析使用最强旗舰模型 GPT-4o，确保最高准确性
+      RESUME_ANALYSIS: process.env.RESUME_AI_MODEL || "openai/gpt-4o",
       // 画像生成使用高质量模型
-      PROFILE_GENERATION: process.env.PROFILE_AI_MODEL || "openai/gpt-5",
+      PROFILE_GENERATION: process.env.PROFILE_AI_MODEL || "openai/gpt-4o",
       // 匹配分析使用推理型模型
-      MATCHING: process.env.MATCHING_AI_MODEL || "google/gemini-2.5-pro",
+      MATCHING: process.env.MATCHING_AI_MODEL || "google/gemini-2.0-flash-thinking-exp",
       // 聊天助手使用经济型模型
-      CHAT: process.env.CHAT_AI_MODEL || "google/gemini-2.5-flash",
+      CHAT: process.env.CHAT_AI_MODEL || "google/gemini-2.0-flash-exp",
       // 默认模型
-      DEFAULT: process.env.AI_MODEL || "google/gemini-2.5-pro"
+      DEFAULT: process.env.AI_MODEL || "google/gemini-2.0-flash-exp"
     };
     AIService = class {
       async analyzeResume(resumeText) {
@@ -2532,17 +2532,39 @@ ${resumeText}`
 
 // server/services/resumeParser.ts
 import { createRequire } from "module";
-var require2, pdfParse, ResumeParserService, resumeParserService;
+function getPdfParse() {
+  if (!pdfParseLoaded) {
+    pdfParseLoaded = true;
+    try {
+      const maybeModule = require2("pdf-parse");
+      pdfParseInstance = typeof maybeModule === "function" ? maybeModule : maybeModule?.default ?? null;
+      if (!pdfParseInstance) {
+        console.warn("[Resume Parser] pdf-parse module resolved but export missing");
+      }
+    } catch (error) {
+      console.warn("[Resume Parser] pdf-parse module unavailable, using basic text fallback:", error);
+      pdfParseInstance = null;
+    }
+  }
+  return pdfParseInstance;
+}
+var require2, pdfParseInstance, pdfParseLoaded, ResumeParserService, resumeParserService;
 var init_resumeParser = __esm({
   "server/services/resumeParser.ts"() {
     "use strict";
     require2 = createRequire(import.meta.url);
-    pdfParse = require2("pdf-parse");
+    pdfParseInstance = null;
+    pdfParseLoaded = false;
     ResumeParserService = class {
       async parseFile(fileBuffer, mimeType) {
         try {
           if (mimeType === "application/pdf") {
-            return await this.parsePDF(fileBuffer);
+            const parser = getPdfParse();
+            if (!parser) {
+              console.warn("[Resume Parser] pdf-parse not available, falling back to plain-text extraction.");
+              return this.parsePlainText(fileBuffer);
+            }
+            return await this.parsePDF(fileBuffer, parser);
           } else if (mimeType === "text/plain") {
             return this.parsePlainText(fileBuffer);
           } else {
@@ -2553,9 +2575,9 @@ var init_resumeParser = __esm({
           throw new Error("Failed to parse resume file: " + (error instanceof Error ? error.message : "Unknown error"));
         }
       }
-      async parsePDF(buffer) {
+      async parsePDF(buffer, parser) {
         try {
-          const data = await pdfParse(buffer, {
+          const data = await parser(buffer, {
             // 保持原始字符编码
             normalizeWhitespace: false,
             // 使用更好的字体处理
@@ -2882,14 +2904,31 @@ var init_openaiService = __esm({
 
 // server/services/resumeParserEnhanced.ts
 import { createRequire as createRequire2 } from "module";
-var require3, pdfParse2, ANALYSIS_MODEL, EnhancedResumeParser, enhancedResumeParser;
+function getPdfParse2() {
+  if (!pdfParseLoaded2) {
+    pdfParseLoaded2 = true;
+    try {
+      const maybeModule = require3("pdf-parse");
+      pdfParseInstance2 = typeof maybeModule === "function" ? maybeModule : maybeModule?.default ?? null;
+      if (!pdfParseInstance2) {
+        console.warn("[Enhanced Parser] pdf-parse module resolved but no default export");
+      }
+    } catch (error) {
+      console.warn("[Enhanced Parser] pdf-parse module unavailable, fallback parsers will be used:", error);
+      pdfParseInstance2 = null;
+    }
+  }
+  return pdfParseInstance2;
+}
+var require3, pdfParseInstance2, pdfParseLoaded2, ANALYSIS_MODEL, EnhancedResumeParser, enhancedResumeParser;
 var init_resumeParserEnhanced = __esm({
   "server/services/resumeParserEnhanced.ts"() {
     "use strict";
     init_openaiService();
     init_resumeParser();
     require3 = createRequire2(import.meta.url);
-    pdfParse2 = require3("pdf-parse");
+    pdfParseInstance2 = null;
+    pdfParseLoaded2 = false;
     ANALYSIS_MODEL = process.env.RESUME_AI_MODEL || "openai/gpt-4o-mini";
     EnhancedResumeParser = class {
       /**
@@ -2897,33 +2936,42 @@ var init_resumeParserEnhanced = __esm({
        */
       async extractTextFromPDF(fileBuffer) {
         const results = [];
-        try {
-          console.log("[Enhanced Parser] Trying pdf-parse...");
-          const pdfData = await pdfParse2(fileBuffer);
-          const cleanText = this.cleanText(pdfData.text);
-          if (cleanText.length > 100) {
-            results.push({
-              text: cleanText,
-              confidence: this.calculateTextConfidence(cleanText),
-              method: "pdf-parse"
-            });
+        const parser = getPdfParse2();
+        if (parser) {
+          try {
+            console.log("[Enhanced Parser] Trying pdf-parse...");
+            const pdfData = await parser(fileBuffer);
+            const cleanText = this.cleanText(pdfData.text);
+            if (cleanText.length > 100) {
+              results.push({
+                text: cleanText,
+                confidence: this.calculateTextConfidence(cleanText),
+                method: "pdf-parse"
+              });
+            }
+          } catch (error) {
+            console.log("[Enhanced Parser] pdf-parse failed:", error);
           }
-        } catch (error) {
-          console.log("[Enhanced Parser] pdf-parse failed:", error);
+        } else {
+          console.log("[Enhanced Parser] pdf-parse not available, skipping primary strategy.");
         }
-        try {
-          console.log("[Enhanced Parser] Trying pdf-parse extraction...");
-          const pdfParseText = await this.extractWithPdfParse(fileBuffer);
-          const cleanText = this.cleanText(pdfParseText);
-          if (cleanText.length > 50) {
-            results.push({
-              text: cleanText,
-              confidence: this.calculateTextConfidence(cleanText),
-              method: "pdf-parse"
-            });
+        if (parser) {
+          try {
+            console.log("[Enhanced Parser] Trying pdf-parse extraction...");
+            const pdfParseText = await this.extractWithPdfParse(fileBuffer, parser);
+            const cleanText = this.cleanText(pdfParseText);
+            if (cleanText.length > 50) {
+              results.push({
+                text: cleanText,
+                confidence: this.calculateTextConfidence(cleanText),
+                method: "pdf-parse"
+              });
+            }
+          } catch (error) {
+            console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
           }
-        } catch (error) {
-          console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
+        } else {
+          console.log("[Enhanced Parser] pdf-parse not available, skipping secondary strategy.");
         }
         try {
           console.log("[Enhanced Parser] Trying fallback parser...");
@@ -2950,9 +2998,9 @@ var init_resumeParserEnhanced = __esm({
       /**
        * 使用 pdf-parse 提取文本
        */
-      async extractWithPdfParse(fileBuffer) {
+      async extractWithPdfParse(fileBuffer, parser) {
         try {
-          const data = await pdfParse2(fileBuffer, {
+          const data = await parser(fileBuffer, {
             normalizeWhitespace: false,
             disableFontFace: false,
             useSystemFonts: true
@@ -7022,9 +7070,10 @@ async function requireAuth(req, res, next) {
     if (error || !user) {
       return res.status(401).json({ error: "Unauthorized: Invalid token" });
     }
-    const { data: userProfile } = await supabase2.from("users").select("id, email, role").eq("id", user.id).single();
+    req.supabaseUser = user;
+    const userProfile = await resolveOrProvisionUser(user);
     if (!userProfile) {
-      return res.status(401).json({ error: "Unauthorized: User not found" });
+      return res.status(401).json({ error: "Unauthorized: User profile missing" });
     }
     req.user = {
       id: userProfile.id,
@@ -7036,6 +7085,48 @@ async function requireAuth(req, res, next) {
     console.error("Auth middleware error:", error);
     return res.status(401).json({ error: "Unauthorized" });
   }
+}
+async function resolveOrProvisionUser(supabaseUser) {
+  try {
+    const existing = await storage.getUser(supabaseUser.id);
+    if (existing) {
+      return existing;
+    }
+  } catch (error) {
+    console.error("[Auth] \u26A0\uFE0F Failed to load user from storage:", error);
+  }
+  const email = supabaseUser.email;
+  if (!email) {
+    console.warn("[Auth] Supabase user has no email, cannot auto-provision profile.");
+    return void 0;
+  }
+  const derivedName = (typeof supabaseUser.user_metadata?.full_name === "string" && supabaseUser.user_metadata.full_name.trim().length > 0 ? supabaseUser.user_metadata.full_name : email.split("@")[0]) || "Recruiter";
+  const payload = {
+    email,
+    password: "supabase-managed",
+    name: derivedName,
+    role: "recruiter"
+  };
+  try {
+    const created = await storage.createUser({ ...payload, id: supabaseUser.id });
+    console.log("[Auth] \u2705 Auto-provisioned user profile for", email);
+    return created;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/duplicate key|unique constraint/i.test(message)) {
+      try {
+        const existing = await storage.getUser(supabaseUser.id);
+        if (existing) {
+          return existing;
+        }
+      } catch (secondError) {
+        console.error("[Auth] \u26A0\uFE0F Failed to reload user after duplicate error:", secondError);
+      }
+    } else {
+      console.error("[Auth] \u274C Failed to auto-provision user profile:", error);
+    }
+  }
+  return void 0;
 }
 async function requireAuthWithInit(req, res, next) {
   try {
@@ -7056,42 +7147,22 @@ async function requireAuthWithInit(req, res, next) {
       return res.status(401).json({ error: "Unauthorized: Invalid token" });
     }
     console.log("[Auth] \u2705 Token valid for user:", user.id);
-    try {
-      const { data: userProfile, error: dbError } = await supabase2.from("users").select("id, email, role").eq("id", user.id).single();
-      if (dbError) {
-        console.error("[Auth] \u26A0\uFE0F Database query error:", dbError.message);
-        console.error("[Auth] \u{1F4A1} Hint: Check if SUPABASE_SERVICE_ROLE_KEY is configured in Vercel");
-        req.user = {
-          id: user.id,
-          email: user.email || "",
-          role: "recruiter"
-        };
-        console.warn("[Auth] \u26A0\uFE0F Using fallback user data from Supabase Auth");
-      } else if (userProfile) {
-        req.user = {
-          id: userProfile.id,
-          email: userProfile.email,
-          role: userProfile.role
-        };
-        console.log("[Auth] \u2705 User profile loaded:", userProfile.email);
-      } else {
-        req.user = {
-          id: user.id,
-          email: user.email || "",
-          role: "recruiter"
-          // 默认角色
-        };
-        console.log("[Auth] \u2139\uFE0F User not in database, using auth data:", user.email);
-      }
-    } catch (dbException) {
-      console.error("[Auth] \u274C Database exception:", dbException.message);
-      console.error("[Auth] \u{1F4A1} This usually means DATABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing");
+    req.supabaseUser = user;
+    const resolvedProfile = await resolveOrProvisionUser(user);
+    if (resolvedProfile) {
+      req.user = {
+        id: resolvedProfile.id,
+        email: resolvedProfile.email,
+        role: resolvedProfile.role
+      };
+      console.log("[Auth] \u2705 User profile ready:", resolvedProfile.email);
+    } else {
       req.user = {
         id: user.id,
         email: user.email || "",
         role: "recruiter"
       };
-      console.warn("[Auth] \u26A0\uFE0F Database unavailable, using fallback user data");
+      console.warn("[Auth] \u26A0\uFE0F Falling back to Supabase auth data for user:", user.email);
     }
     next();
   } catch (error) {
@@ -7107,6 +7178,7 @@ var supabaseUrl, supabaseServiceKey, supabase2;
 var init_auth = __esm({
   "server/middleware/auth.ts"() {
     "use strict";
+    init_storage();
     supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
     supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -8959,7 +9031,22 @@ async function registerRoutes(app2) {
       if (req.params.id !== req.user?.id && req.user?.role !== "admin") {
         return res.status(403).json({ error: "Forbidden: Cannot access other user's data" });
       }
-      const user = await storage.getUser(req.params.id);
+      const requestedUserId = req.params.id;
+      let user = await storage.getUser(requestedUserId);
+      if (!user && req.supabaseUser && req.supabaseUser.id === requestedUserId) {
+        const provisioned = await resolveOrProvisionUser(req.supabaseUser);
+        if (provisioned) {
+          user = provisioned;
+        } else {
+          const fallbackName = (typeof req.supabaseUser.user_metadata?.full_name === "string" && req.supabaseUser.user_metadata.full_name.trim().length > 0 ? req.supabaseUser.user_metadata.full_name : req.supabaseUser.email?.split("@")[0]) || "Recruiter";
+          return res.json({
+            id: req.supabaseUser.id,
+            email: req.supabaseUser.email || "",
+            name: fallbackName,
+            role: "recruiter"
+          });
+        }
+      }
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -11503,27 +11590,29 @@ async function getApp() {
   });
   app.use("/api", apiLimiter);
   app.use("/api/ai", aiLimiter);
-  const allowedOrigins = [
-    "http://localhost:5000",
-    "http://localhost:3000",
-    "http://127.0.0.1:5000",
-    "http://127.0.0.1:3000"
-  ];
-  if (process.env.CORS_ORIGIN) {
-    const envOrigins = process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
-    allowedOrigins.push(...envOrigins);
-  }
+  const isProduction = process.env.NODE_ENV === "production";
   app.use(cors({
     origin: (origin, callback) => {
-      const finalOrigins = [...new Set(allowedOrigins)];
       if (!origin) {
         return callback(null, true);
       }
-      if (finalOrigins.includes(origin) || origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      if (isProduction) {
+        if (process.env.CORS_ORIGIN) {
+          const allowedOrigins = process.env.CORS_ORIGIN.split(",").map((o) => o.trim());
+          if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+        }
+        if (origin.includes("vercel.app") || origin.includes("hr-ai-recruit")) {
+          return callback(null, true);
+        }
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        return callback(new Error("Not allowed by CORS"));
       }
+      if (origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
+        return callback(null, true);
+      }
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     optionsSuccessStatus: 200
