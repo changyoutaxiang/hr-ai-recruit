@@ -5,6 +5,10 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
+# Vercel 构建产物（由 esbuild 生成）
+api/[...path].js
+api/[...path].js.map
+
 # Environment variables (NEVER commit these!)
 .env
 .env.local

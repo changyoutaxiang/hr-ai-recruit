@@ -1,0 +1,18 @@
+# 忽略 TypeScript 源文件（使用打包后的 JS）
+api/[...path].ts
+
+# 开发文件
+*.env
+*.env.local
+.env.example
+
+# 文档和配置
+CLAUDE.md
+README.md
+.mcp.json
+.mcp.json.example
+
+# 开发工具
+node_modules
+.git
+.gitignore
