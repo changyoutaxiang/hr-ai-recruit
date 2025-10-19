@@ -18,6 +18,14 @@ export async function createApp() {
   ensureRequiredEnv();
 
   const app = express();
+  const trustProxySetting = process.env.TRUST_PROXY ?? '1';
+  const resolveTrustProxy = (value: string) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? value : numeric;
+  };
+  app.set('trust proxy', resolveTrustProxy(trustProxySetting));
 
   // Extract Supabase URL for CSP
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
