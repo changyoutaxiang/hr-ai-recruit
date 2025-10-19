@@ -12,16 +12,16 @@ const openai = new OpenAI({
 
 // 针对不同任务使用不同模型以平衡效果和成本
 const MODELS = {
-  // 简历分析使用最强旗舰模型 GPT-5，确保最高准确性
-  RESUME_ANALYSIS: process.env.RESUME_AI_MODEL || "openai/gpt-5",
+  // 简历分析使用最强旗舰模型 GPT-4o，确保最高准确性
+  RESUME_ANALYSIS: process.env.RESUME_AI_MODEL || "openai/gpt-4o",
   // 画像生成使用高质量模型
-  PROFILE_GENERATION: process.env.PROFILE_AI_MODEL || "openai/gpt-5",
+  PROFILE_GENERATION: process.env.PROFILE_AI_MODEL || "openai/gpt-4o",
   // 匹配分析使用推理型模型
-  MATCHING: process.env.MATCHING_AI_MODEL || "google/gemini-2.5-pro",
+  MATCHING: process.env.MATCHING_AI_MODEL || "google/gemini-2.0-flash-thinking-exp",
   // 聊天助手使用经济型模型
-  CHAT: process.env.CHAT_AI_MODEL || "google/gemini-2.5-flash",
+  CHAT: process.env.CHAT_AI_MODEL || "google/gemini-2.0-flash-exp",
   // 默认模型
-  DEFAULT: process.env.AI_MODEL || "google/gemini-2.5-pro"
+  DEFAULT: process.env.AI_MODEL || "google/gemini-2.0-flash-exp"
 };
 
 export interface TokenUsage {
