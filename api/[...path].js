@@ -11454,7 +11454,7 @@ var init_env = __esm({
   }
 });
 
-// api/[...path].ts
+// api/_[...path].ts.source
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
