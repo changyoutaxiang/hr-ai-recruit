@@ -202,9 +202,9 @@ app.use((req, res, next) => {
     }
 
     // ALWAYS serve the app on the port specified in the environment variable PORT
-    // Default to 3000 (avoiding macOS AirPlay on 5000)
+    // Default to 5000 to match frontend proxy and documentation
     // this serves both the API and the client.
-    const port = parseInt(process.env.PORT || '3000', 10);
+    const port = parseInt(process.env.PORT || '5000', 10);
     httpServer.listen(port, "0.0.0.0", () => {
       log(`serving on port ${port}`);
       log(`WebSocket collaboration service running`);

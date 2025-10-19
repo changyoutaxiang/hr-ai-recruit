@@ -42,9 +42,10 @@ export function WebSocketProvider({ children, autoConnect = true }: WebSocketPro
   // Get the correct WebSocket URL based on current protocol
   const getWebSocketURL = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In development, connect to backend server on port 3000
+    // In development, connect to backend server on port 5000 (default backend port)
     const isDevelopment = import.meta.env.DEV;
-    const host = isDevelopment ? 'localhost:3000' : window.location.host;
+    const backendPort = import.meta.env.VITE_BACKEND_PORT || '5000';
+    const host = isDevelopment ? `localhost:${backendPort}` : window.location.host;
     return `${protocol}//${host}`;
   }, []);
 
