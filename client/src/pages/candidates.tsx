@@ -14,6 +14,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/language-context";
+import type { Candidate } from "@shared/schema";
 import { 
   Search, 
   Filter, 
@@ -38,6 +39,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { ResumeAnalysisResult } from "@/types";
 
 export default function Candidates() {
@@ -49,6 +60,7 @@ export default function Candidates() {
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
   const [selectedCandidateForResume, setSelectedCandidateForResume] = useState<string | null>(null);
   const [selectedCandidateForMatches, setSelectedCandidateForMatches] = useState<string | null>(null);
+  const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   
   const { 
@@ -75,6 +87,92 @@ export default function Candidates() {
       toast({
         title: t('error.generic'),
         description: t('candidates.createCandidateError'),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCandidateMutation = useMutation({
+    mutationFn: async (candidateId: string) => {
+      const response = await apiRequest("DELETE", `/api/candidates/${candidateId}`);
+      // 204 No Content 不会有响应体
+      if (response.status === 204) {
+        return { success: true };
+      }
+      return response.json();
+    },
+    // 乐观更新：立即从列表中移除候选人
+    onMutate: async (candidateId: string) => {
+      // 取消任何正在进行的查询
+      await queryClient.cancelQueries({ queryKey: ["/api/candidates"] });
+
+      // 保存当前数据用于回滚
+      const previousCandidates = queryClient.getQueryData<Candidate[]>(["/api/candidates"]);
+
+      // 乐观更新：从列表中移除候选人
+      queryClient.setQueryData<Candidate[]>(
+        ["/api/candidates"],
+        (old) => old?.filter(c => c.id !== candidateId) ?? []
+      );
+
+      // 返回回滚数据
+      return { previousCandidates };
+    },
+    onSuccess: () => {
+      // 重新获取数据确保与服务器同步
+      queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      setCandidateToDelete(null);
+      toast({
+        title: t('candidates.candidateDeleted'),
+        description: t('candidates.candidateDeletedDesc'),
+      });
+    },
+    onError: async (error: any, candidateId: string, context) => {
+      // 回滚乐观更新
+      if (context?.previousCandidates) {
+        queryClient.setQueryData(["/api/candidates"], context.previousCandidates);
+      }
+      setCandidateToDelete(null);
+
+      let errorMessage = t('candidates.deleteCandidateError');
+      let errorDetails = '';
+
+      try {
+        // 尝试解析错误消息中的 JSON 响应
+        if (error.message) {
+          // apiRequest 抛出的错误格式: "409: {json}"
+          const match = error.message.match(/^(\d+):\s*(.+)$/);
+          if (match) {
+            const [, statusCode, responseText] = match;
+
+            // 只处理 409 Conflict 错误
+            if (statusCode === '409') {
+              try {
+                const errorData = JSON.parse(responseText);
+
+                // 检查是否有详细信息
+                if (errorData.details) {
+                  const { interviews, jobMatches } = errorData.details;
+                  if (typeof interviews === 'number' && typeof jobMatches === 'number') {
+                    errorDetails = t('candidates.deleteRelatedRecords', {
+                      interviews: interviews.toString(),
+                      jobMatches: jobMatches.toString()
+                    });
+                  }
+                }
+              } catch (jsonError) {
+                console.error('[Delete Candidate] Failed to parse error JSON:', jsonError);
+              }
+            }
+          }
+        }
+      } catch (parseError) {
+        console.error('[Delete Candidate] Failed to parse error message:', parseError);
+      }
+
+      toast({
+        title: t('error.generic'),
+        description: errorDetails ? `${errorMessage}\n${errorDetails}` : errorMessage,
         variant: "destructive",
       });
     },
@@ -113,6 +211,16 @@ export default function Candidates() {
       title: t('candidates.resumeAnalysisComplete'),
       description: t('candidates.resumeAnalysisCompleteDesc'),
     });
+  };
+
+  const handleDeleteCandidate = (candidateId: string) => {
+    setCandidateToDelete(candidateId);
+  };
+
+  const confirmDeleteCandidate = () => {
+    if (candidateToDelete) {
+      deleteCandidateMutation.mutate(candidateToDelete);
+    }
   };
 
   if (error) {
@@ -343,6 +451,7 @@ export default function Candidates() {
                   candidate={candidate}
                   onUploadResume={() => setSelectedCandidateForResume(candidate.id)}
                   onViewMatches={(candidateId) => setSelectedCandidateForMatches(candidateId)}
+                  onDelete={() => handleDeleteCandidate(candidate.id)}
                   data-testid={`card-candidate-${candidate.id}`}
                 />
               ))}
@@ -380,7 +489,7 @@ export default function Candidates() {
           // 刷新候选人列表
           queryClient.invalidateQueries({ queryKey: ["candidates"] });
           setIsBulkUploadOpen(false);
-          
+
           const successCount = results.filter(r => r.status === 'success').length;
           if (successCount > 0) {
             toast({
@@ -390,6 +499,27 @@ export default function Candidates() {
           }
         }}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!candidateToDelete} onOpenChange={(open) => !open && setCandidateToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('candidates.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('candidates.deleteConfirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('candidates.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteCandidate}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteCandidateMutation.isPending ? t('common.deleting') : t('candidates.deleteButton')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

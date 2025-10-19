@@ -2,11 +2,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar, 
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
   DollarSign,
   FileText,
   Eye,
@@ -14,7 +14,8 @@ import {
   Upload,
   Brain,
   Clock,
-  Tag
+  Tag,
+  Trash2
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { type Candidate } from "@shared/schema";
@@ -23,9 +24,10 @@ interface CandidateCardProps {
   candidate: Candidate;
   onUploadResume?: () => void;
   onViewMatches?: (candidateId: string) => void;
+  onDelete?: () => void;
 }
 
-export function CandidateCard({ candidate, onUploadResume, onViewMatches }: CandidateCardProps) {
+export function CandidateCard({ candidate, onUploadResume, onViewMatches, onDelete }: CandidateCardProps) {
   const [, navigate] = useLocation();
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -282,6 +284,17 @@ export function CandidateCard({ candidate, onUploadResume, onViewMatches }: Cand
                 data-testid={`button-upload-resume-${candidate.id}`}
               >
                 <Upload className="w-4 h-4" />
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onDelete}
+                className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                data-testid={`button-delete-${candidate.id}`}
+              >
+                <Trash2 className="w-4 h-4" />
               </Button>
             )}
           </div>

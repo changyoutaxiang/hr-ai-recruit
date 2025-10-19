@@ -740,8 +740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: "Cannot delete candidate with existing interviews or job matches",
           details: {
             interviews: relatedInterviews.length,
-            jobMatches: relatedMatches.length,
-            message: "请先删除相关的面试记录和职位匹配记录"
+            jobMatches: relatedMatches.length
           }
         });
       }

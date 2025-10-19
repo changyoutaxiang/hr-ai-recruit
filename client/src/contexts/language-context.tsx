@@ -23,6 +23,7 @@ const translations: Translations = {
   // 通用
   'common.loading': { en: 'Loading...', zh: '加载中...' },
   'common.saving': { en: 'Saving...', zh: '保存中...' },
+  'common.deleting': { en: 'Deleting...', zh: '删除中...' },
   'common.save': { en: 'Save', zh: '保存' },
   'common.cancel': { en: 'Cancel', zh: '取消' },
   'common.delete': { en: 'Delete', zh: '删除' },
@@ -341,6 +342,14 @@ const translations: Translations = {
   'candidates.formSource': { en: 'Source', zh: '来源' },
   'candidates.createCandidate': { en: 'Create Candidate', zh: '创建候选人' },
   'candidates.creating': { en: 'Creating...', zh: '创建中...' },
+  'candidates.deleteButton': { en: 'Delete', zh: '删除' },
+  'candidates.cancel': { en: 'Cancel', zh: '取消' },
+  'candidates.deleteConfirmTitle': { en: 'Delete Candidate', zh: '删除候选人' },
+  'candidates.deleteConfirmDescription': { en: 'Are you sure you want to delete this candidate? This action cannot be undone.', zh: '您确定要删除此候选人吗？此操作无法撤销。' },
+  'candidates.candidateDeleted': { en: 'Candidate Deleted', zh: '候选人已删除' },
+  'candidates.candidateDeletedDesc': { en: 'The candidate has been successfully deleted.', zh: '候选人已成功删除。' },
+  'candidates.deleteCandidateError': { en: 'Failed to delete candidate. Please remove related interviews and job matches first.', zh: '删除候选人失败。请先删除相关的面试和职位匹配记录。' },
+  'candidates.deleteRelatedRecords': { en: 'Related records: {interviews} interviews, {jobMatches} job matches', zh: '关联记录: {interviews} 个面试, {jobMatches} 个职位匹配' },
 
   // 模板页面
   'templates.pageTitle': { en: 'Prompt Templates', zh: '提示模板' },
