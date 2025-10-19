@@ -7,14 +7,15 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Sidebar } from "@/components/ui/sidebar";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage, Language } from "@/contexts/language-context";
-import { 
-  Settings, 
-  User, 
-  Bell, 
-  Globe, 
-  Palette, 
+import {
+  Settings,
+  User,
+  Bell,
+  Globe,
+  Palette,
   Shield,
   Save,
   RefreshCw
@@ -111,16 +112,25 @@ export default function PreferencesPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <div className="flex items-center gap-3 mb-6">
-        <Settings className="h-8 w-8" />
-        <div>
-          <h1 className="text-3xl font-bold">偏好设置</h1>
-          <p className="text-muted-foreground">管理您的个人偏好和系统设置</p>
-        </div>
-      </div>
+    <div className="flex h-screen overflow-hidden bg-background">
+      <Sidebar />
 
-      <div className="space-y-6">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="bg-card border-b border-border px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Settings className="h-6 w-6" />
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">{t('nav.preferences')}</h1>
+              <p className="text-sm text-muted-foreground">管理您的个人偏好和系统设置</p>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="container mx-auto p-6 max-w-4xl">
+            <div className="space-y-6">
         {/* 个人信息 */}
         <Card>
           <CardHeader>
@@ -453,26 +463,31 @@ export default function PreferencesPage() {
           </CardContent>
         </Card>
 
-        {/* 操作按钮 */}
-        <div className="flex justify-between items-center pt-6">
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            重置为默认
-          </Button>
-          
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="flex items-center gap-2"
-          >
-            <Save className="h-4 w-4" />
-            {isLoading ? "保存中..." : "保存设置"}
-          </Button>
-        </div>
+              {/* 操作按钮 */}
+              <div className="flex justify-between items-center pt-6">
+                <Button
+                  variant="outline"
+                  onClick={handleReset}
+                  className="flex items-center gap-2"
+                  data-testid="button-reset-preferences"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  重置为默认
+                </Button>
+
+                <Button
+                  onClick={handleSave}
+                  disabled={isLoading}
+                  className="flex items-center gap-2"
+                  data-testid="button-save-preferences"
+                >
+                  <Save className="h-4 w-4" />
+                  {isLoading ? "保存中..." : t('common.save') + "设置"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   );
