@@ -4,7 +4,28 @@ import { resumeParserService } from "./resumeParser";
 import type { ParsedResume } from "./resumeParser";
 
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+
+type PdfParseFn = (data: Buffer, options?: Record<string, unknown>) => Promise<{ text: string }>;
+
+let pdfParseInstance: PdfParseFn | null = null;
+let pdfParseLoaded = false;
+
+function getPdfParse(): PdfParseFn | null {
+  if (!pdfParseLoaded) {
+    pdfParseLoaded = true;
+    try {
+      const maybeModule = require("pdf-parse");
+      pdfParseInstance = typeof maybeModule === "function" ? maybeModule : maybeModule?.default ?? null;
+      if (!pdfParseInstance) {
+        console.warn("[Enhanced Parser] pdf-parse module resolved but no default export");
+      }
+    } catch (error) {
+      console.warn("[Enhanced Parser] pdf-parse module unavailable, fallback parsers will be used:", error);
+      pdfParseInstance = null;
+    }
+  }
+  return pdfParseInstance;
+}
 
 // 使用 GPT-4o-mini 进行文本分析，性价比更高
 const ANALYSIS_MODEL = process.env.RESUME_AI_MODEL || "openai/gpt-4o-mini";
@@ -59,35 +80,44 @@ export class EnhancedResumeParser {
     const results: Array<{ text: string; confidence: number; method: string }> = [];
 
     // 策略1: 使用 pdf-parse (快速，适合标准PDF)
-    try {
-      console.log("[Enhanced Parser] Trying pdf-parse...");
-      const pdfData = await pdfParse(fileBuffer);
-      const cleanText = this.cleanText(pdfData.text);
-      if (cleanText.length > 100) {
-        results.push({
-          text: cleanText,
-          confidence: this.calculateTextConfidence(cleanText),
-          method: "pdf-parse"
-        });
+    const parser = getPdfParse();
+    if (parser) {
+      try {
+        console.log("[Enhanced Parser] Trying pdf-parse...");
+        const pdfData = await parser(fileBuffer);
+        const cleanText = this.cleanText(pdfData.text);
+        if (cleanText.length > 100) {
+          results.push({
+            text: cleanText,
+            confidence: this.calculateTextConfidence(cleanText),
+            method: "pdf-parse"
+          });
+        }
+      } catch (error) {
+        console.log("[Enhanced Parser] pdf-parse failed:", error);
       }
-    } catch (error) {
-      console.log("[Enhanced Parser] pdf-parse failed:", error);
+    } else {
+      console.log("[Enhanced Parser] pdf-parse not available, skipping primary strategy.");
     }
 
     // 策略2: 使用 pdf-parse 进行更精确的文本提取
-    try {
-      console.log("[Enhanced Parser] Trying pdf-parse extraction...");
-      const pdfParseText = await this.extractWithPdfParse(fileBuffer);
-      const cleanText = this.cleanText(pdfParseText);
-      if (cleanText.length > 50) {
-        results.push({
-          text: cleanText,
-          confidence: this.calculateTextConfidence(cleanText),
-          method: "pdf-parse"
-        });
+    if (parser) {
+      try {
+        console.log("[Enhanced Parser] Trying pdf-parse extraction...");
+        const pdfParseText = await this.extractWithPdfParse(fileBuffer, parser);
+        const cleanText = this.cleanText(pdfParseText);
+        if (cleanText.length > 50) {
+          results.push({
+            text: cleanText,
+            confidence: this.calculateTextConfidence(cleanText),
+            method: "pdf-parse"
+          });
+        }
+      } catch (error) {
+        console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
       }
-    } catch (error) {
-      console.log("[Enhanced Parser] pdf-parse extraction failed:", error);
+    } else {
+      console.log("[Enhanced Parser] pdf-parse not available, skipping secondary strategy.");
     }
 
     // 策略3: 使用原有的解析器作为后备
@@ -122,9 +152,9 @@ export class EnhancedResumeParser {
   /**
    * 使用 pdf-parse 提取文本
    */
-  private async extractWithPdfParse(fileBuffer: Buffer): Promise<string> {
+  private async extractWithPdfParse(fileBuffer: Buffer, parser: PdfParseFn): Promise<string> {
     try {
-      const data = await pdfParse(fileBuffer, {
+      const data = await parser(fileBuffer, {
         normalizeWhitespace: false,
         disableFontFace: false,
         useSystemFonts: true,

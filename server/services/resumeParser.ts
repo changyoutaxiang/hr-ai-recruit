@@ -1,6 +1,31 @@
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+
+type PdfParseFn = (data: Buffer, options?: Record<string, unknown>) => Promise<{
+  text: string;
+  numpages: number;
+  info?: any;
+}>;
+
+let pdfParseInstance: PdfParseFn | null = null;
+let pdfParseLoaded = false;
+
+function getPdfParse(): PdfParseFn | null {
+  if (!pdfParseLoaded) {
+    pdfParseLoaded = true;
+    try {
+      const maybeModule = require("pdf-parse");
+      pdfParseInstance = typeof maybeModule === "function" ? maybeModule : maybeModule?.default ?? null;
+      if (!pdfParseInstance) {
+        console.warn("[Resume Parser] pdf-parse module resolved but export missing");
+      }
+    } catch (error) {
+      console.warn("[Resume Parser] pdf-parse module unavailable, using basic text fallback:", error);
+      pdfParseInstance = null;
+    }
+  }
+  return pdfParseInstance;
+}
 
 export interface ParsedResume {
   text: string;
@@ -14,7 +39,12 @@ export class ResumeParserService {
   async parseFile(fileBuffer: Buffer, mimeType: string): Promise<ParsedResume> {
     try {
       if (mimeType === "application/pdf") {
-        return await this.parsePDF(fileBuffer);
+        const parser = getPdfParse();
+        if (!parser) {
+          console.warn("[Resume Parser] pdf-parse not available, falling back to plain-text extraction.");
+          return this.parsePlainText(fileBuffer);
+        }
+        return await this.parsePDF(fileBuffer, parser);
       } else if (mimeType === "text/plain") {
         return this.parsePlainText(fileBuffer);
       } else {
@@ -26,10 +56,10 @@ export class ResumeParserService {
     }
   }
 
-  private async parsePDF(buffer: Buffer): Promise<ParsedResume> {
+  private async parsePDF(buffer: Buffer, parser: PdfParseFn): Promise<ParsedResume> {
     try {
       // 使用更好的PDF解析选项来处理中文字符
-      const data = await pdfParse(buffer, {
+      const data = await parser(buffer, {
         // 保持原始字符编码
         normalizeWhitespace: false,
         // 使用更好的字体处理
