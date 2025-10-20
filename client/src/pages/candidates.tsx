@@ -75,7 +75,7 @@ export default function Candidates() {
       return response.json();
     },
     onSuccess: (newCandidate) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
       setIsCreateDialogOpen(false);
       setSelectedCandidateForResume(newCandidate.id);
       toast({
@@ -103,24 +103,24 @@ export default function Candidates() {
     },
     // 乐观更新：立即从列表中移除候选人
     onMutate: async (candidateId: string) => {
-      // 取消任何正在进行的查询
-      await queryClient.cancelQueries({ queryKey: ["/api/candidates"] });
+      // 取消任何正在进行的候选人查询（使用前缀匹配，匹配所有 "candidates" 开头的查询）
+      await queryClient.cancelQueries({ queryKey: ["candidates"] });
 
-      // 保存当前数据用于回滚
-      const previousCandidates = queryClient.getQueryData<Candidate[]>(["/api/candidates"]);
+      // 保存所有候选人查询的快照用于回滚
+      const previousData = queryClient.getQueriesData<Candidate[]>({ queryKey: ["candidates"] });
 
-      // 乐观更新：从列表中移除候选人
-      queryClient.setQueryData<Candidate[]>(
-        ["/api/candidates"],
+      // 乐观更新：从所有候选人查询中移除该候选人
+      queryClient.setQueriesData<Candidate[]>(
+        { queryKey: ["candidates"] },
         (old) => old?.filter(c => c.id !== candidateId) ?? []
       );
 
       // 返回回滚数据
-      return { previousCandidates };
+      return { previousData };
     },
     onSuccess: () => {
-      // 重新获取数据确保与服务器同步
-      queryClient.invalidateQueries({ queryKey: ["/api/candidates"] });
+      // 使所有候选人查询缓存失效（前缀匹配，包括不同的搜索参数）
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
       setCandidateToDelete(null);
       toast({
         title: t('candidates.candidateDeleted'),
@@ -128,9 +128,11 @@ export default function Candidates() {
       });
     },
     onError: async (error: any, candidateId: string, context) => {
-      // 回滚乐观更新
-      if (context?.previousCandidates) {
-        queryClient.setQueryData(["/api/candidates"], context.previousCandidates);
+      // 回滚乐观更新：恢复所有候选人查询的快照
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
       }
       setCandidateToDelete(null);
 
