@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,11 +62,35 @@ export default function Candidates() {
   const [selectedCandidateForMatches, setSelectedCandidateForMatches] = useState<string | null>(null);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const { toast } = useToast();
-  
-  const { 
-    data: candidates, 
-    isLoading, 
-    error 
+
+  // 响应 URL 参数：自动打开创建对话框或应用搜索
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const search = params.get('search');
+
+    // 如果 URL 包含 ?action=create，自动打开创建对话框
+    if (action === 'create') {
+      setIsCreateDialogOpen(true);
+      // 仅清除 action 参数，保留其他参数（如 search）
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('action');
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.search);
+    }
+
+    // 如果 URL 包含搜索参数，应用到搜索框
+    if (search) {
+      const decodedSearch = decodeURIComponent(search);
+      if (decodedSearch.trim()) {
+        setSearchQuery(decodedSearch);
+      }
+    }
+  }, []);
+
+  const {
+    data: candidates,
+    isLoading,
+    error
   } = useCandidates(searchQuery);
 
   const createCandidateMutation = useMutation({
