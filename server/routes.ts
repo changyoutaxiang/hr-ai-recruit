@@ -724,18 +724,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/candidates/:id", requireAuth, async (req: AuthRequest, res) => {
+    const candidateId = req.params.id;
+    console.log(`[Candidate Delete] Starting deletion for candidate: ${candidateId}`);
+
     try {
       // 先获取候选人信息以获得简历文件路径
-      const candidate = await storage.getCandidate(req.params.id);
+      console.log(`[Candidate Delete] Step 1: Fetching candidate info for ${candidateId}`);
+      const candidate = await storage.getCandidate(candidateId);
       if (!candidate) {
+        console.log(`[Candidate Delete] Candidate not found: ${candidateId}`);
         return res.status(404).json({ error: "Candidate not found" });
       }
+      console.log(`[Candidate Delete] Candidate found: ${candidate.name}`);
 
       // 检查是否有关联的面试和职位匹配记录
-      const relatedInterviews = await storage.getInterviewsByCandidate(req.params.id);
-      const relatedMatches = await storage.getJobMatchesForCandidate(req.params.id);
+      console.log(`[Candidate Delete] Step 2: Checking related records for ${candidateId}`);
+      const relatedInterviews = await storage.getInterviewsByCandidate(candidateId);
+      console.log(`[Candidate Delete] Found ${relatedInterviews.length} related interviews`);
+
+      const relatedMatches = await storage.getJobMatchesForCandidate(candidateId);
+      console.log(`[Candidate Delete] Found ${relatedMatches.length} related job matches`);
 
       if (relatedInterviews.length > 0 || relatedMatches.length > 0) {
+        console.log(`[Candidate Delete] Cannot delete - has related records: interviews=${relatedInterviews.length}, matches=${relatedMatches.length}`);
         return res.status(409).json({
           error: "Cannot delete candidate with existing interviews or job matches",
           details: {
@@ -747,26 +758,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 如果有简历文件，先从 Storage 删除
       if (candidate.resumeUrl) {
+        console.log(`[Candidate Delete] Step 3: Deleting resume file: ${candidate.resumeUrl}`);
         try {
           await supabaseStorageService.deleteResume(candidate.resumeUrl);
-          console.log(`[Candidate Delete] Deleted resume file: ${candidate.resumeUrl}`);
+          console.log(`[Candidate Delete] Successfully deleted resume file`);
         } catch (storageError) {
-          console.error(`[Candidate Delete] Failed to delete resume file:`, storageError);
+          console.error(`[Candidate Delete] Failed to delete resume file (continuing anyway):`, storageError);
           // 继续删除候选人记录，但记录错误
           // 孤儿文件可以通过定期清理任务处理
         }
+      } else {
+        console.log(`[Candidate Delete] No resume file to delete`);
       }
 
       // 删除数据库记录
-      const deleted = await storage.deleteCandidate(req.params.id);
+      console.log(`[Candidate Delete] Step 4: Deleting database record for ${candidateId}`);
+      const deleted = await storage.deleteCandidate(candidateId);
       if (!deleted) {
+        console.log(`[Candidate Delete] Database deletion failed - candidate not found: ${candidateId}`);
         return res.status(404).json({ error: "Candidate not found" });
       }
 
+      console.log(`[Candidate Delete] Successfully deleted candidate: ${candidateId}`);
       res.status(204).send();
     } catch (error) {
-      console.error("[Candidate Delete] Error:", error);
-      res.status(500).json({ error: "Failed to delete candidate" });
+      console.error(`[Candidate Delete] Fatal error while deleting candidate ${candidateId}:`, error);
+      console.error(`[Candidate Delete] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+      res.status(500).json({
+        error: "Failed to delete candidate",
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
