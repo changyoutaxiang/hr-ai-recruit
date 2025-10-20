@@ -11574,6 +11574,7 @@ async function getApp() {
   const { ensureRequiredEnv: ensureRequiredEnv2 } = await Promise.resolve().then(() => (init_env(), env_exports));
   ensureRequiredEnv2();
   app = express();
+  app.set("trust proxy", true);
   const supabaseUrl2 = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
   app.use(helmet({
     contentSecurityPolicy: {

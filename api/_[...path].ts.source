@@ -30,6 +30,10 @@ async function getApp() {
 
   app = express();
 
+  // Trust proxy - Required for Vercel serverless environment
+  // Vercel acts as a reverse proxy and adds X-Forwarded-For and Forwarded headers
+  app.set('trust proxy', true);
+
   // Security
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 
