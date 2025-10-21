@@ -15,11 +15,14 @@ export interface DashboardMetrics {
   };
 }
 
-export function useDashboardMetrics() {
+export function useDashboardMetrics(timeRange?: string) {
   return useQuery<DashboardMetrics>({
-    queryKey: ["dashboard", "metrics"],
+    queryKey: ["dashboard", "metrics", timeRange || "30"],
     queryFn: async () => {
-      const response = await apiRequest("GET", "/api/dashboard/metrics");
+      const url = timeRange
+        ? `/api/dashboard/metrics?timeRange=${timeRange}`
+        : "/api/dashboard/metrics";
+      const response = await apiRequest("GET", url);
       return response.json();
     },
   });

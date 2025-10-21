@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ import type { ResumeAnalysisResult } from "@/types";
 
 export default function Candidates() {
   const { t } = useLanguage();
+  const [location] = useLocation(); // 监听 URL 变化
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -69,8 +71,8 @@ export default function Candidates() {
     const action = params.get('action');
     const search = params.get('search');
 
-    // 如果 URL 包含 ?action=create，自动打开创建对话框
-    if (action === 'create') {
+    // 只在 action=create 且对话框未打开时才执行（避免重复操作）
+    if (action === 'create' && !isCreateDialogOpen) {
       setIsCreateDialogOpen(true);
       // 仅清除 action 参数，保留其他参数（如 search）
       const newUrl = new URL(window.location.href);
@@ -78,14 +80,14 @@ export default function Candidates() {
       window.history.replaceState({}, '', newUrl.pathname + newUrl.search);
     }
 
-    // 如果 URL 包含搜索参数，应用到搜索框
+    // 只在搜索参数与当前值不同时才更新（避免不必要的 state 更新）
     if (search) {
       const decodedSearch = decodeURIComponent(search);
-      if (decodedSearch.trim()) {
+      if (decodedSearch.trim() && decodedSearch !== searchQuery) {
         setSearchQuery(decodedSearch);
       }
     }
-  }, []);
+  }, [location, isCreateDialogOpen, searchQuery]); // 添加依赖以避免闭包问题
 
   const {
     data: candidates,

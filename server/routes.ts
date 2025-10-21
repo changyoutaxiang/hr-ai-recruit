@@ -23,7 +23,7 @@ import { organizationalFitService, type CultureFitAssessment, type LeadershipAss
 import { companyConfigService } from "./services/companyConfigService";
 import { supabaseStorageService } from "./services/supabaseStorage";
 import { requireAuth, requireAuthWithInit, requireRole, resolveOrProvisionUser, type AuthRequest } from "./middleware/auth";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import multer from "multer";
 
 // Configure multer for file uploads
@@ -545,7 +545,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const candidate = await storage.createCandidate(candidateData);
       res.status(201).json(candidate);
     } catch (error) {
-      res.status(400).json({ error: "Invalid candidate data" });
+      // 详细错误日志，便于调试
+      console.error("❌ 创建候选人失败:", error);
+
+      // 区分 Zod 验证错误和数据库错误
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          error: "数据验证失败",
+          details: error.errors
+        });
+      }
+
+      // 数据库错误或其他错误
+      const errorMessage = error instanceof Error ? error.message : "未知错误";
+      res.status(500).json({
+        error: "创建候选人失败",
+        message: errorMessage
+      });
     }
   });
 

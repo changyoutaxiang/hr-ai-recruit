@@ -1609,7 +1609,31 @@ class SupabaseStorage implements IStorage {
   }
 
   async createCandidate(candidate: InsertCandidate): Promise<Candidate> {
-    return this.insertRow<Candidate>("candidates", candidate);
+    // 仅记录安全字段（避免泄露 email、phone、resumeText 等 PII）
+    const safeLog = {
+      name: candidate.name,
+      position: candidate.position,
+      status: candidate.status,
+      source: candidate.source,
+      experience: candidate.experience
+    };
+
+    if (process.env.NODE_ENV === 'development' || process.env.LOG_LEVEL === 'debug') {
+      console.log("📝 准备创建候选人:", JSON.stringify(safeLog, null, 2));
+    }
+
+    try {
+      const result = await this.insertRow<Candidate>("candidates", candidate);
+      console.info("✅ 候选人创建成功:", { id: result.id, name: result.name });
+      return result;
+    } catch (error) {
+      console.error("💥 候选人创建失败 - 数据库错误:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        candidateName: candidate.name  // 仅记录非敏感字段
+      });
+      throw error; // 重新抛出错误，让上层处理
+    }
   }
 
   async updateCandidate(id: string, candidate: Partial<Candidate>): Promise<Candidate | undefined> {

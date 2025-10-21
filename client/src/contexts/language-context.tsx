@@ -65,6 +65,13 @@ const translations: Translations = {
   'nav.profile': { en: 'Profile', zh: '个人资料' },
   'nav.logout': { en: 'Logout', zh: '退出登录' },
 
+  // 角色
+  'role.admin': { en: 'Admin', zh: '管理员' },
+  'role.recruiter': { en: 'Recruiter', zh: '招聘专员' },
+  'role.recruitment_lead': { en: 'Recruitment Lead', zh: '招聘主管' },
+  'role.hiring_manager': { en: 'Hiring Manager', zh: '招聘经理' },
+  'role.user': { en: 'User', zh: '用户' },
+
   // 仪表板
   'dashboard.title': { en: 'HR Recruitment Dashboard', zh: 'HR 招聘仪表板' },
   'dashboard.totalCandidates': { en: 'Total Candidates', zh: '候选人总数' },

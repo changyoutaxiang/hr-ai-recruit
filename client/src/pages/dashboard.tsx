@@ -7,6 +7,7 @@ import { NotificationPanel } from "@/components/notification-panel";
 import { OnlineUsers } from "@/components/online-users";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useLanguage } from "@/contexts/language-context";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCandidates } from "@/hooks/use-candidates";
 import { useDashboardMetrics } from "@/hooks/use-dashboard";
 import { queryClient } from "@/lib/queryClient";
@@ -33,7 +34,8 @@ import { useLocation } from "wouter";
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [timeRange, setTimeRange] = useState<'30' | '90' | '365'>('30');
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { user, profile } = useAuth();
   const [, navigate] = useLocation();
 
   const { data: metrics, isLoading, error: metricsError } = useDashboardMetrics(timeRange);
@@ -88,7 +90,12 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-foreground">{t('nav.dashboard')}</h1>
-              <p className="text-sm text-muted-foreground">{t('dashboard.welcomeMessage')}</p>
+              <p className="text-sm text-muted-foreground">
+                {language === 'en'
+                  ? `Welcome back, ${profile?.fullName || user?.email?.split('@')[0] || 'User'}! Here's your recruitment overview.`
+                  : `欢迎回来，${profile?.fullName || user?.email?.split('@')[0] || '用户'}！这是您的招聘概览。`
+                }
+              </p>
             </div>
             
             <div className="flex items-center space-x-4">

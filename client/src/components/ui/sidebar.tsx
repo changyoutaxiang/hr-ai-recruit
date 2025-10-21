@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useLocation } from "wouter";
 import { useLanguage } from "@/contexts/language-context";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   LayoutDashboard, 
   Users, 
@@ -40,7 +41,8 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const [location] = useLocation();
   const { t } = useLanguage();
-  
+  const { user, profile } = useAuth();
+
   const navigation = getNavigation(t);
   const analytics = getAnalytics(t);
   const settings = getSettings(t);
@@ -142,11 +144,17 @@ export function Sidebar({ className }: SidebarProps) {
       <div className="p-4 border-t border-border">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-            <span className="text-sm font-medium text-primary">SC</span>
+            <span className="text-sm font-medium text-primary">
+              {profile?.fullName?.slice(0, 2).toUpperCase() || user?.email?.slice(0, 2).toUpperCase() || "U"}
+            </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">Sarah Chen</p>
-            <p className="text-xs text-muted-foreground truncate">HR Manager</p>
+            <p className="text-sm font-medium text-foreground truncate">
+              {profile?.fullName || user?.email || "Unknown User"}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {profile?.role ? t(`role.${profile.role}`) : t('role.user')}
+            </p>
           </div>
           <Button variant="ghost" size="sm">
             <Settings className="w-4 h-4" />
